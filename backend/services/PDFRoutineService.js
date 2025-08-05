@@ -2,13 +2,24 @@ const PDFDocument = require('pdfkit');
 const RoutineSlot = require('../models/RoutineSlot');
 const TimeSlot = require('../models/TimeSlot');
 const Program = require('../models/Program');
-const { getTimeSlotsSorted } = require('../utils/timeSlotUtils');
 
 class PDFRoutineService {
 
   constructor() {
     // PDF layout configuration
-    this.headerRowHeight = 60; // Reduced header height for time slots
+    this.headerRowHeight = 65; // Increased header height for better text display in landscape
+  }
+
+  /**
+   * Get semester numbers for a given semester group (odd/even)
+   */
+  _getSemestersForGroup(semesterGroup) {
+    if (semesterGroup === 'odd') {
+      return [1, 3, 5, 7]; // Odd semesters
+    } else if (semesterGroup === 'even') {
+      return [2, 4, 6, 8]; // Even semesters
+    }
+    return []; // Return empty array for unknown groups
   }
 
   /**
@@ -16,12 +27,12 @@ class PDFRoutineService {
    */
   _getCustomPageSize(type = 'default') {
     const sizes = {
-      'default': [842, 1400],     // Standard width, extended height
-      'wide': [1200, 842],        // Wide format (landscape)
-      'tall': [842, 1600],        // Extra tall for complex schedules
-      'large': [1200, 1300],      // Large format for detailed view
-      'a4': [595, 842],           // Standard A4
-      'a3': [842, 1191]           // A3 size
+      'default': [1400, 842],     // Standard landscape (width > height)
+      'wide': [1200, 842],        // Wide landscape format
+      'tall': [1600, 842],        // Extra wide landscape for complex schedules
+      'large': [1000, 1600],      // Large landscape format (width > height)
+      'a4': [595, 842],           // Standard A4 (PDFKit handles landscape rotation)
+      'a3': [1191, 842]           // A3 size landscape
     };
     return sizes[type] || sizes['default'];
   }
@@ -31,7 +42,7 @@ class PDFRoutineService {
    */
   _getOptimalPageSize(routineSlots, timeSlots) {
     // For now, always use large format for better layout and readability
-    return 'large'; // Large format (1200x1600) for detailed view
+    return 'a4'; // Large landscape format (1600x1000) for detailed view
     
     /* Previous dynamic sizing logic - temporarily disabled
     const totalSlots = routineSlots.length;
@@ -95,8 +106,26 @@ class PDFRoutineService {
         return null;
       }
 
-      // Get time slots for grid structure
-      const timeSlots = await getTimeSlotsSorted();
+      // Get context-aware time slots for this room's schedule
+      // Since room can have classes across different programs/semesters, 
+      // get all relevant time slots for their contexts
+      const roomContexts = [...new Set(routineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
+      
+      let allTimeSlots = new Set();
+      for (const context of roomContexts) {
+        const [programCode, semester, section] = context.split('-');
+        const contextTimeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
+        contextTimeSlots.forEach(ts => allTimeSlots.add(ts._id.toString()));
+      }
+      
+      // Get the actual time slot objects and sort them
+      const timeSlots = await TimeSlot.find({ 
+        _id: { $in: Array.from(allTimeSlots) } 
+      }).sort({ sortOrder: 1 });
+      
+      console.log(`📄 Found ${timeSlots.length} context-aware time slots for room across ${roomContexts.length} contexts`);
 
       // Determine optimal page size based on schedule complexity (same as class routine)
       const optimalSize = this._getOptimalPageSize(routineSlots, timeSlots);
@@ -108,7 +137,7 @@ class PDFRoutineService {
       const doc = new PDFDocument({
         margin: 30,
         size: customSize,
-        layout: 'portrait' // Portrait orientation for better vertical space
+        layout: 'landscape' // Landscape orientation for better horizontal space for routine grid
       });
 
       const buffers = [];
@@ -179,8 +208,26 @@ class PDFRoutineService {
         return null;
       }
 
-      // Get time slots for grid structure
-      const timeSlots = await getTimeSlotsSorted();
+      // Get context-aware time slots for this teacher's schedule
+      // Since teacher can have classes across different programs/semesters, 
+      // get all relevant time slots for their contexts
+      const teacherContexts = [...new Set(routineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
+      
+      let allTimeSlots = new Set();
+      for (const context of teacherContexts) {
+        const [programCode, semester, section] = context.split('-');
+        const contextTimeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
+        contextTimeSlots.forEach(ts => allTimeSlots.add(ts._id.toString()));
+      }
+      
+      // Get the actual time slot objects and sort them
+      const timeSlots = await TimeSlot.find({ 
+        _id: { $in: Array.from(allTimeSlots) } 
+      }).sort({ sortOrder: 1 });
+      
+      console.log(`📄 Found ${timeSlots.length} context-aware time slots for teacher across ${teacherContexts.length} contexts`);
 
       // Determine optimal page size based on schedule complexity (same as class routine)
       const optimalSize = this._getOptimalPageSize(routineSlots, timeSlots);
@@ -192,7 +239,7 @@ class PDFRoutineService {
       const doc = new PDFDocument({
         margin: 30,
         size: customSize,
-        layout: 'portrait' // Portrait orientation for better vertical space
+        layout: 'landscape' // Landscape orientation for better horizontal space for routine grid
       });
 
       const buffers = [];
@@ -230,12 +277,20 @@ class PDFRoutineService {
   /**
    * Generate combined PDF for all teachers schedules
    */
-  async generateAllTeachersSchedulesPDF() {
+  async generateAllTeachersSchedulesPDF(semesterGroup = 'all') {
     try {
-      console.log(`📄 Generating all teachers schedules PDF`);
+      console.log(`📄 Generating all teachers schedules PDF for semester group: ${semesterGroup}`);
+
+      // Build filter for semester group
+      let routineFilter = { isActive: true };
+      if (semesterGroup && semesterGroup !== 'all') {
+        // Get semester numbers that match the group
+        const semesters = this._getSemestersForGroup(semesterGroup);
+        routineFilter.semester = { $in: semesters };
+      }
 
       // Get all active teachers that have routine slots
-      const teacherIds = await RoutineSlot.distinct('teacherIds', { isActive: true });
+      const teacherIds = await RoutineSlot.distinct('teacherIds', routineFilter);
       
       if (!teacherIds || teacherIds.length === 0) {
         console.log('No teachers with active schedule found');
@@ -251,8 +306,28 @@ class PDFRoutineService {
         return null;
       }
 
-      // Get time slots for optimal sizing calculation
-      const timeSlots = await getTimeSlotsSorted();
+      // Get context-aware time slots for optimal sizing calculation
+      // Use all relevant contexts for comprehensive time slot coverage
+      let allTimeSlots = new Set();
+      
+      // Get all routine contexts to determine time slots
+      const allRoutineSlots = await RoutineSlot.find(routineFilter).limit(100); // Sample for efficiency
+      const allContexts = [...new Set(allRoutineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
+      
+      for (const context of allContexts) {
+        const [programCode, semester, section] = context.split('-');
+        const contextTimeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
+        contextTimeSlots.forEach(ts => allTimeSlots.add(ts._id.toString()));
+      }
+      
+      // Get the actual time slot objects and sort them
+      const timeSlots = await TimeSlot.find({ 
+        _id: { $in: Array.from(allTimeSlots) } 
+      }).sort({ sortOrder: 1 });
+      
+      console.log(`📄 Found ${timeSlots.length} context-aware time slots across ${allContexts.length} contexts`);
 
       // Create PDF document with dynamic sizing based on first teacher's schedule complexity
       const firstTeacherSlots = await RoutineSlot.find({
@@ -267,7 +342,7 @@ class PDFRoutineService {
       const doc = new PDFDocument({
         margin: 30,
         size: customSize,
-        layout: 'portrait' // Portrait orientation for better vertical space
+        layout: 'landscape' // Landscape orientation for better horizontal space for routine grid
       });
 
       const buffers = [];
@@ -284,11 +359,17 @@ class PDFRoutineService {
 
         console.log(`Generating schedule for teacher ${teacher.fullName}...`);
 
-        // Get routine data for this teacher
-        const routineSlots = await RoutineSlot.find({
+        // Get routine data for this teacher with semester group filter
+        let teacherRoutineFilter = {
           teacherIds: teacher._id,
           isActive: true
-        })
+        };
+        if (semesterGroup && semesterGroup !== 'all') {
+          const semesters = this._getSemestersForGroup(semesterGroup);
+          teacherRoutineFilter.semester = { $in: semesters };
+        }
+
+        const routineSlots = await RoutineSlot.find(teacherRoutineFilter)
           .populate('subjectId', 'name code')
           .populate('subjectIds', 'name code')
           .populate('teacherIds', 'fullName shortName')
@@ -300,15 +381,33 @@ class PDFRoutineService {
           continue;
         }
 
+        // Get context-specific time slots for this teacher
+        const teacherContexts = [...new Set(routineSlots.map(slot => 
+          `${slot.programCode}-${slot.semester}-${slot.section}`
+        ))];
+        
+        let teacherTimeSlots = new Set();
+        for (const context of teacherContexts) {
+          const [programCode, semester, section] = context.split('-');
+          const contextTimeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
+          contextTimeSlots.forEach(ts => teacherTimeSlots.add(ts._id.toString()));
+        }
+        
+        // Get the actual time slot objects for this teacher
+        const teacherSpecificTimeSlots = await TimeSlot.find({ 
+          _id: { $in: Array.from(teacherTimeSlots) } 
+        }).sort({ sortOrder: 1 });
+
         // Generate header for this teacher
+        const groupSuffix = semesterGroup && semesterGroup !== 'all' ? ` (${semesterGroup.toUpperCase()} Semester)` : '';
         this._generatePDFHeader(doc, {
-          title: `Teacher Schedule - ${teacher.fullName}`,
+          title: `Teacher Schedule - ${teacher.fullName}${groupSuffix}`,
           subtitle: `Weekly Schedule`,
           teacherName: teacher.fullName
         });
 
-        // Generate teacher schedule grid using the working aligned method (timeSlots already available)
-        this._generateScheduleGridAligned(doc, routineSlots, timeSlots);
+        // Generate teacher schedule grid using context-specific time slots
+        this._generateScheduleGridAligned(doc, routineSlots, teacherSpecificTimeSlots);
 
         // Add footer
         this._generatePDFFooter(doc, `Teacher Schedule - ${teacher.fullName}`);
@@ -331,19 +430,80 @@ class PDFRoutineService {
   }
 
   /**
+   * Get context-specific time slots (matching frontend logic)
+   */
+  async getTimeSlotsByContext(programCode, semester, section, includeGlobal = true) {
+    try {
+      // Build filter for context-specific or global time slots - EXACT SAME LOGIC AS timeSlotController.js
+      const filters = [];
+      
+      // Always include global time slots unless explicitly excluded
+      if (includeGlobal) {
+        // Include both isGlobal: true AND null/undefined (for legacy time slots)
+        filters.push({ 
+          $or: [
+            { isGlobal: true },
+            { isGlobal: { $exists: false } }, // Legacy time slots without isGlobal field
+            { isGlobal: null }
+          ]
+        });
+      }
+      
+      // Add context-specific time slots if context is provided
+      if (programCode || semester || section) {
+        const contextFilter = { isGlobal: false };
+        
+        if (programCode) contextFilter.programCode = programCode.toUpperCase();
+        if (semester) contextFilter.semester = parseInt(semester);
+        if (section) contextFilter.section = section.toUpperCase();
+        
+        filters.push(contextFilter);
+      }
+      
+      // Build the main filter
+      const mainFilter = filters.length > 1 ? { $or: filters } : (filters[0] || {});
+      
+      // Get time slots sorted by sortOrder (matches frontend exactly)
+      const timeSlots = await TimeSlot.find(mainFilter).sort({ sortOrder: 1 });
+      
+      console.log(`🔍 PDF Context Time Slots Query:`, {
+        programCode, 
+        semester, 
+        section, 
+        includeGlobal,
+        filter: JSON.stringify(mainFilter, null, 2),
+        resultCount: timeSlots.length
+      });
+      
+      return timeSlots;
+      
+    } catch (error) {
+      console.error('❌ Error fetching context time slots for PDF:', error);
+      // Fallback to all global time slots
+      return await TimeSlot.find({ 
+        $or: [
+          { isGlobal: true },
+          { isGlobal: { $exists: false } }, // Legacy time slots
+          { isGlobal: null }
+        ]
+      }).sort({ sortOrder: 1 });
+    }
+  }
+
+  /**
    * Generate PDF for class schedule (program/semester/section)
    */
   async generateClassSchedulePDF(programCode, semester, section) {
     try {
       console.log(`📄 Generating class schedule PDF for ${programCode}-${semester}-${section}`);
 
-      // Get routine data - Step 1: Get TimeSlots first (mirroring frontend)
-      const timeSlots = await getTimeSlotsSorted();
+      // Get routine data - Step 1: Get context-specific TimeSlots first (mirroring frontend)
+      const timeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
       if (!timeSlots || timeSlots.length === 0) {
-        console.log('No time slots found in database');
+        console.log('No time slots found for context');
         return null;
       }
-      console.log(`Found ${timeSlots.length} time slots from database`);
+      console.log(`Found ${timeSlots.length} context-specific time slots`);
 
       // Step 2: Get routine slots with proper population
       const routineSlots = await RoutineSlot.find({
@@ -382,14 +542,13 @@ class PDFRoutineService {
       const optimalSize = this._getOptimalPageSize(routineSlots, timeSlots);
       const customSize = this._getCustomPageSize(optimalSize);
       
-      console.log(`📄 Using ${optimalSize} page format (${customSize[0]}x${customSize[1]}) for ${routineSlots.length} slots`);
-
-      // Create PDF document with dynamic dimensions
-      const doc = new PDFDocument({
-        margin: 30,
-        size: customSize,
-        layout: 'portrait' // Portrait orientation for better vertical space
-      });
+      console.log(`📄 Using ${optimalSize} page format (${customSize[0]}x${customSize[1]}) for ${routineSlots.length} slots`);    // Force smaller margins for all
+    const margin = 15; // Force small margins
+    const doc = new PDFDocument({
+      margin: margin,
+      size: customSize,
+      layout: 'landscape' // Landscape orientation for better horizontal space for routine grid
+    });
 
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
@@ -404,6 +563,9 @@ class PDFRoutineService {
 
       // Generate schedule grid (frontend-aligned approach)
       this._generateScheduleGridAligned(doc, routineSlots, timeSlots);
+
+      // Add teacher code to name mapping table
+      this._generateTeacherMappingTable(doc, routineSlots);
 
       // Add footer
       this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
@@ -445,8 +607,9 @@ class PDFRoutineService {
 
       console.log(`Found sections: ${sections.join(', ')}`);
 
-      // Get time slots for optimal sizing calculation
-      const timeSlots = await getTimeSlotsSorted();
+      // Get context-specific time slots for optimal sizing calculation 
+      // Use first section for sizing, but will get context-specific slots for each section
+      const timeSlots = await this.getTimeSlotsByContext(programCode, semester, sections[0]);
 
       // Create PDF document with dynamic sizing based on first section's schedule complexity
       const firstSectionSlots = await RoutineSlot.find({
@@ -463,7 +626,7 @@ class PDFRoutineService {
       const doc = new PDFDocument({
         margin: 30,
         size: customSize,
-        layout: 'portrait' // Portrait orientation for better vertical space
+        layout: 'landscape' // Landscape orientation for better horizontal space for routine grid
       });
 
       const buffers = [];
@@ -479,6 +642,9 @@ class PDFRoutineService {
         isFirstSection = false;
 
         console.log(`Generating section ${section}...`);
+
+        // Get context-specific time slots for this section
+        const sectionTimeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
 
         // Get routine data for this section
         const routineSlots = await RoutineSlot.find({
@@ -509,8 +675,8 @@ class PDFRoutineService {
           section: section.toUpperCase()
         });
 
-        // Generate grid for this section using aligned method (timeSlots already available)
-        this._generateScheduleGridAligned(doc, routineSlots, timeSlots);
+        // Generate grid for this section using aligned method (context-specific timeSlots)
+        this._generateScheduleGridAligned(doc, routineSlots, sectionTimeSlots);
 
         // Add footer
         this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
@@ -535,12 +701,20 @@ class PDFRoutineService {
   /**
    * Generate PDF for all rooms schedule
    */
-  async generateAllRoomsSchedulePDF() {
+  async generateAllRoomsSchedulePDF(semesterGroup = 'all') {
     try {
-      console.log(`📄 Generating all rooms schedule PDF`);
+      console.log(`📄 Generating all rooms schedule PDF for semester group: ${semesterGroup}`);
+
+      // Build filter for semester group
+      let routineFilter = { isActive: true };
+      if (semesterGroup && semesterGroup !== 'all') {
+        // Get semester numbers that match the group
+        const semesters = this._getSemestersForGroup(semesterGroup);
+        routineFilter.semester = { $in: semesters };
+      }
 
       // Get all active rooms that have routine slots
-      const roomIds = await RoutineSlot.distinct('roomId', { isActive: true });
+      const roomIds = await RoutineSlot.distinct('roomId', routineFilter);
       
       if (!roomIds || roomIds.length === 0) {
         console.log('No rooms with active schedule found');
@@ -556,8 +730,28 @@ class PDFRoutineService {
         return null;
       }
 
-      // Get time slots for optimal sizing calculation
-      const timeSlots = await getTimeSlotsSorted();
+      // Get context-aware time slots for optimal sizing calculation
+      // Use all relevant contexts for comprehensive time slot coverage
+      let allTimeSlots = new Set();
+      
+      // Get all routine contexts to determine time slots
+      const allRoutineSlots = await RoutineSlot.find(routineFilter).limit(100); // Sample for efficiency
+      const allContexts = [...new Set(allRoutineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
+      
+      for (const context of allContexts) {
+        const [programCode, semester, section] = context.split('-');
+        const contextTimeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
+        contextTimeSlots.forEach(ts => allTimeSlots.add(ts._id.toString()));
+      }
+      
+      // Get the actual time slot objects and sort them
+      const timeSlots = await TimeSlot.find({ 
+        _id: { $in: Array.from(allTimeSlots) } 
+      }).sort({ sortOrder: 1 });
+      
+      console.log(`📄 Found ${timeSlots.length} context-aware time slots across ${allContexts.length} contexts`);
 
       // Create PDF document with dynamic sizing based on first room's schedule complexity
       const firstRoomSlots = await RoutineSlot.find({
@@ -572,7 +766,7 @@ class PDFRoutineService {
       const doc = new PDFDocument({
         margin: 30,
         size: customSize,
-        layout: 'portrait' // Portrait orientation for better vertical space
+        layout: 'landscape' // Landscape orientation for better horizontal space for routine grid
       });
 
       const buffers = [];
@@ -589,11 +783,17 @@ class PDFRoutineService {
 
         console.log(`Generating schedule for room ${room.name}...`);
 
-        // Get routine data for this room
-        const routineSlots = await RoutineSlot.find({
+        // Get routine data for this room with semester group filter
+        let roomRoutineFilter = {
           roomId: room._id,
           isActive: true
-        })
+        };
+        if (semesterGroup && semesterGroup !== 'all') {
+          const semesters = this._getSemestersForGroup(semesterGroup);
+          roomRoutineFilter.semester = { $in: semesters };
+        }
+
+        const routineSlots = await RoutineSlot.find(roomRoutineFilter)
           .populate('subjectId', 'name code')
           .populate('subjectIds', 'name code')
           .populate('teacherIds', 'fullName shortName')
@@ -604,15 +804,33 @@ class PDFRoutineService {
           continue;
         }
 
+        // Get context-specific time slots for this room
+        const roomContexts = [...new Set(routineSlots.map(slot => 
+          `${slot.programCode}-${slot.semester}-${slot.section}`
+        ))];
+        
+        let roomTimeSlots = new Set();
+        for (const context of roomContexts) {
+          const [programCode, semester, section] = context.split('-');
+          const contextTimeSlots = await this.getTimeSlotsByContext(programCode, semester, section);
+          contextTimeSlots.forEach(ts => roomTimeSlots.add(ts._id.toString()));
+        }
+        
+        // Get the actual time slot objects for this room
+        const roomSpecificTimeSlots = await TimeSlot.find({ 
+          _id: { $in: Array.from(roomTimeSlots) } 
+        }).sort({ sortOrder: 1 });
+
         // Generate header for this room
+        const groupSuffix = semesterGroup && semesterGroup !== 'all' ? ` (${semesterGroup.toUpperCase()} Semester)` : '';
         this._generatePDFHeader(doc, {
-          title: `Room Schedule - ${room.name}`,
+          title: `Room Schedule - ${room.name}${groupSuffix}`,
           subtitle: `Weekly Schedule`,
           roomName: room.name
         });
 
-        // Generate room schedule grid using the same method as class routine (timeSlots already available)
-        this._generateScheduleGridAligned(doc, routineSlots, timeSlots);
+        // Generate room schedule grid using context-specific time slots
+        this._generateScheduleGridAligned(doc, routineSlots, roomSpecificTimeSlots);
 
         // Add footer
         this._generatePDFFooter(doc, `Room Schedule - ${room.name}`);
@@ -638,35 +856,43 @@ class PDFRoutineService {
    * Generate PDF header with program/room/teacher information
    */
   _generatePDFHeader(doc, options = {}) {
-    const { programCode, programName, semester, section, title, subtitle, roomName, teacherName } = options;
+    const { programCode, programName, semester, section, title, subtitle, roomName, teacherName } = options;      // Detect if page is A4 for font size adjustments - A4 landscape is 842x595
+      const isA4 = doc.page.width <= 842 && doc.page.height <= 595;
+    const headerFontMultiplier = isA4 ? 0.4 : 1; // Much smaller fonts for A4 header
 
     // College header
-    doc.fontSize(18).font('Helvetica-Bold')
+    const collegeFontSize = 8;
+    doc.fontSize(collegeFontSize).font('Helvetica-Bold')
        .text('Department of Electronics and Computer Engineering', { align: 'center' });
     
-    doc.fontSize(16).font('Helvetica')
+    const campusFontSize = 6;
+    doc.fontSize(campusFontSize).font('Helvetica')
        .text('Pulchowk Campus, Institute of Engineering', { align: 'center' });
     
-    doc.moveDown(0.7);
+    doc.moveDown(isA4 ? 0.3 : 0.7); // Smaller spacing for A4
 
     // Schedule title
     if (title) {
-      doc.fontSize(16).font('Helvetica-Bold')
+      const titleFontSize = 8;
+      doc.fontSize(titleFontSize).font('Helvetica-Bold')
          .text(title, { align: 'center' });
     } else if (programCode) {
-      doc.fontSize(16).font('Helvetica-Bold')
+      const programFontSize = 8;
+      doc.fontSize(programFontSize).font('Helvetica-Bold')
          .text(`${programCode} - ${programName || 'Program'}`, { align: 'center' });
       
-      doc.fontSize(14).font('Helvetica')
+      const semesterFontSize = 6;
+      doc.fontSize(semesterFontSize).font('Helvetica')
          .text(`Semester ${semester} | Section ${section}`, { align: 'center' });
     }
 
     if (subtitle) {
-      doc.fontSize(14).font('Helvetica')
+      const subtitleFontSize = Math.round(14 * headerFontMultiplier);
+      doc.fontSize(subtitleFontSize).font('Helvetica')
          .text(subtitle, { align: 'center' });
     }
 
-    doc.moveDown(1.5); // Increased spacing to replace the line separator
+    doc.moveDown(isA4 ? 0.5 : 1.5); // Much smaller spacing for A4
   }
 
   /**
@@ -697,18 +923,117 @@ class PDFRoutineService {
   }
 
   /**
+   * Generate teacher code to name mapping table at the bottom right of the PDF
+   * Organized in multiple columns to fit more teachers efficiently
+   */
+  _generateTeacherMappingTable(doc, routineSlots) {
+    // Extract unique teachers from routine slots
+    const teacherMap = new Map();
+    
+    routineSlots.forEach(slot => {
+      if (slot.teacherIds && Array.isArray(slot.teacherIds)) {
+        slot.teacherIds.forEach(teacher => {
+          if (teacher.shortName && teacher.fullName) {
+            teacherMap.set(teacher.shortName, teacher.fullName);
+          }
+        });
+      }
+    });
+
+    // If no teachers found, don't render the table
+    if (teacherMap.size === 0) {
+      console.log('No teachers found in routine slots, skipping teacher mapping table');
+      return;
+    }
+
+    console.log(`📊 Generating teacher mapping table with ${teacherMap.size} teachers`);
+
+    // Sort teachers by code for consistent display
+    const sortedTeachers = Array.from(teacherMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    
+    // Calculate available width
+    const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    
+    // Detect if page is A4 for sizing adjustments - A4 landscape is 842x595
+    const isA4 = doc.page.width <= 842 && doc.page.height <= 595;
+    
+    // Configuration for multi-column layout - better positioning and full names
+    const teachersPerColumn = 8; // Fewer teachers per column for better readability
+    const columnCount = Math.ceil(sortedTeachers.length / teachersPerColumn);
+    const columnWidth = 180; // Wider columns to fit full teacher names
+    const totalTableWidth = columnCount * columnWidth;
+    const rowHeight = 12; // Slightly taller rows for better readability
+    const tableHeight = Math.min(teachersPerColumn * rowHeight + 15, 120); // Reasonable height
+    
+    // Position table right below the grid, centered horizontally
+    const tableX = doc.page.margins.left + (totalWidth - totalTableWidth) / 2; // Center the table
+    const tableY = doc.y + 20; // Position 20px below current position (below grid)
+    
+    // Draw overall table background and border
+    doc.rect(tableX, tableY, totalTableWidth, tableHeight)
+       .fillAndStroke('#f8f9fa', '#cccccc');
+    
+    // Process teachers in columns
+    for (let col = 0; col < columnCount; col++) {
+      const startIndex = col * teachersPerColumn;
+      const endIndex = Math.min(startIndex + teachersPerColumn, sortedTeachers.length);
+      const columnTeachers = sortedTeachers.slice(startIndex, endIndex);
+      
+      const colX = tableX + (col * columnWidth);
+      
+      // Draw column separator (except for first column)
+      if (col > 0) {
+        doc.strokeColor('#cccccc')
+           .lineWidth(0.5)
+           .moveTo(colX, tableY)
+           .lineTo(colX, tableY + tableHeight)
+           .stroke();
+      }
+      
+      // Draw teachers in this column
+      columnTeachers.forEach(([code, name], rowIndex) => {
+        const rowY = tableY + 5 + (rowIndex * rowHeight);
+        
+        // Alternate row background colors within each column
+        const isEven = rowIndex % 2 === 0;
+        if (!isEven) {
+          doc.rect(colX, rowY - 2, columnWidth, rowHeight)
+             .fillAndStroke('#ffffff', '#ffffff');
+        }
+        
+        // Teacher code and name on same line: "CODE - Teacher Name" - show full names
+        const teacherText = `${code} - ${name}`; // Don't truncate names
+        
+        const fontSize = 6; // Slightly larger font for better readability
+        doc.fontSize(fontSize)
+           .font('Helvetica')
+           .fillColor('#000000')
+           .text(teacherText, colX + 3, rowY, {
+             width: columnWidth - 6,
+             align: 'left'
+           });
+      });
+    }
+    
+    console.log(`✅ Teacher mapping table generated with ${sortedTeachers.length} teachers in ${columnCount} columns`);
+    
+    // Update doc.y to position after the table for footer placement
+    doc.y = tableY + tableHeight + 15; // Add some spacing after table
+  }
+
+  /**
    * Generate schedule grid for class routines
    */
   _generateScheduleGrid(doc, routineSlots, timeSlots) {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     
-    // Grid dimensions
+    // Grid dimensions - optimized for landscape layout
     const startX = doc.page.margins.left;
     const startY = doc.y;
     const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-    const dayColumnWidth = 90; // Increased from 80 to 90 for day names
+    const dayColumnWidth = 100; // Increased from 90 to 100 for day names in landscape
     const timeColumnWidth = (totalWidth - dayColumnWidth) / timeSlots.length;
-    const rowHeight = 65; // Increased from 45 to 65 for better readability
+    const rowHeight = 85; // Increased from 65 to 85 for better text accommodation in landscape
 
     // Create routine lookup map using timeSlot._id (matching frontend exactly)
     const routineMap = new Map();
@@ -813,13 +1138,13 @@ class PDFRoutineService {
   _generateRoomScheduleGrid(doc, routineSlots, timeSlots, roomName) {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     
-    // Grid dimensions
+    // Grid dimensions - optimized for landscape layout
     const startX = doc.page.margins.left;
     const startY = doc.y;
     const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-    const dayColumnWidth = 90; // Increased from 80 to 90 for day names
+    const dayColumnWidth = 100; // Increased from 90 to 100 for day names in landscape
     const timeColumnWidth = (totalWidth - dayColumnWidth) / timeSlots.length;
-    const rowHeight = 65; // Increased from 45 to 65 for better readability
+    const rowHeight = 85; // Increased from 65 to 85 for better text accommodation in landscape
 
     // Create routine lookup map using timeSlot._id (matching frontend exactly)
     const routineMap = new Map();
@@ -923,14 +1248,24 @@ class PDFRoutineService {
     console.log('📋 TimeSlots order:');
     console.log(`  ${timeSlots.map((ts, idx) => `[${idx}] ${ts.startTime}-${ts.endTime}`).join(', ')}`);
     
-    // Grid dimensions - optimized for custom page size
+    // Grid dimensions - optimized for A4 landscape layout with smaller fonts
     const startX = doc.page.margins.left;
     const startY = doc.y;
     const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-    const dayColumnWidth = 100; // Increased for better day name display
-    const timeColumnWidth = (totalWidth - dayColumnWidth) / timeSlots.length;
-    const headerRowHeight = 60; // Reduced header height as requested
-    const rowHeight = 120; // Increased significantly for better readability with custom height
+    
+    // Detect page size to adjust dimensions accordingly - A4 landscape is 842x595
+    const isA4 = doc.page.width <= 842 && doc.page.height <= 595;
+    
+    // Debug: Log page dimensions and A4 detection
+    console.log(`📏 Page dimensions: ${doc.page.width}x${doc.page.height}, isA4: ${isA4}`);
+    
+    // Adjust dimensions based on page size - force A4 optimizations
+    const dayColumnWidth = 55; // Much smaller for A4
+    // Calculate time column width to use full page width
+    const availableWidth = totalWidth;
+    const timeColumnWidth = (availableWidth - dayColumnWidth) / timeSlots.length;
+    const headerRowHeight = 20; // Even smaller header for A4
+    const rowHeight = 50; // Even smaller rows for A4
 
     // Step 1: Create routine lookup map and detect spanning classes
     const routineMap = new Map();
@@ -941,12 +1276,12 @@ class PDFRoutineService {
     
     // First pass: Map all slots
     routineSlots.forEach(slot => {
-      // CRITICAL FIX: slotIndex should match TimeSlot._id, not array position
-      // Find the timeSlot where _id matches the slotIndex
-      const timeSlot = timeSlots.find(ts => ts._id === slot.slotIndex);
-      
-      if (timeSlot) {
-        const timeSlotId = timeSlot._id.toString();
+      // The API uses slotIndex (1-based) to map to timeSlots array (0-based)
+      if (slot.slotIndex !== undefined && timeSlots[slot.slotIndex - 1]) {
+        // Convert 1-based slotIndex to 0-based array index
+        const timeSlotArrayIndex = slot.slotIndex - 1;
+        const timeSlotId = timeSlots[timeSlotArrayIndex]._id.toString();
+        const timeSlot = timeSlots[timeSlotArrayIndex];
         const key = `${slot.dayIndex}-${timeSlotId}`;
         
         if (!routineMap.has(key)) {
@@ -972,9 +1307,7 @@ class PDFRoutineService {
         
         console.log(`  ✅ Direct mapping: timeSlotId ${timeSlotId} -> key: ${key} -> subject: ${slot.subjectId?.code || slot.subjectCode_display || 'N/A'}`);
       } else {
-        const availableTimeSlotIds = timeSlots.map(ts => ts._id).join(', ');
-        console.warn(`  ❌ Unable to map slot: dayIndex=${slot.dayIndex}, slotIndex=${slot.slotIndex}, timeSlotId=${slot.timeSlotId}`);
-        console.warn(`     Available TimeSlot IDs: ${availableTimeSlotIds}`);
+        console.warn(`  ❌ Unable to map slot: dayIndex=${slot.dayIndex}, slotIndex=${slot.slotIndex}, timeSlotId=${slot.timeSlotId}, available timeSlots=${timeSlots.length}`);
       }
     });
 
@@ -982,32 +1315,10 @@ class PDFRoutineService {
     console.log('🔍 Detecting spanning classes and practical class groups...');
     
     days.forEach((day, dayIndex) => {
-      const daySlots = routineSlots.filter(slot => slot.dayIndex === dayIndex);
-      
-      // Sort by the actual time order using TimeSlot sortOrder, not slotIndex
-      daySlots.sort((a, b) => {
-        const timeSlotA = timeSlots.find(ts => ts._id === a.slotIndex);
-        const timeSlotB = timeSlots.find(ts => ts._id === b.slotIndex);
-        
-        if (!timeSlotA || !timeSlotB) {
-          console.warn(`Missing timeSlot for slotIndex: ${!timeSlotA ? a.slotIndex : b.slotIndex}`);
-          return 0;
-        }
-        
-        return timeSlotA.sortOrder - timeSlotB.sortOrder;
-      });
+      const daySlots = routineSlots.filter(slot => slot.dayIndex === dayIndex)
+                                   .sort((a, b) => a.slotIndex - b.slotIndex);
       
       if (daySlots.length === 0) return;
-      
-      // Helper function to check if two slots are consecutive in time order
-      const areConsecutiveSlots = (slotIndex1, slotIndex2) => {
-        const timeSlot1 = timeSlots.find(ts => ts._id === slotIndex1);
-        const timeSlot2 = timeSlots.find(ts => ts._id === slotIndex2);
-        
-        if (!timeSlot1 || !timeSlot2) return false;
-        
-        return timeSlot2.sortOrder === timeSlot1.sortOrder + 1;
-      };
       
       let currentSpan = null;
       const spans = [];
@@ -1038,7 +1349,7 @@ class PDFRoutineService {
               slots: [...slotsInSlot],
               type: 'practical-group'
             };
-          } else if (areConsecutiveSlots(currentPracticalGroup.endSlot, slotIndex)) {
+          } else if (slotIndex === currentPracticalGroup.endSlot + 1) {
             // Check if this continues the same practical class or is a new one
             const currentSubjects = currentPracticalGroup.slots.map(s => s.subjectId?.code || s.subjectCode_display).filter(Boolean);
             const newSubjects = slotsInSlot.map(s => s.subjectId?.code || s.subjectCode_display).filter(Boolean);
@@ -1126,7 +1437,7 @@ class PDFRoutineService {
           };
         } else if (currentSpan.subject === subjectIdentifier && 
                    currentSpan.classType === slot.classType &&
-                   areConsecutiveSlots(currentSpan.endSlot, slot.slotIndex)) {
+                   slot.slotIndex === currentSpan.endSlot + 1) {
           // Continue current span
           currentSpan.endSlot = slot.slotIndex;
           currentSpan.slots.push(slot);
@@ -1167,25 +1478,27 @@ class PDFRoutineService {
 
     console.log(`📊 Mapped ${mappedCount}/${routineSlots.length} routine slots successfully`);
 
-    // Step 2: Draw header row (time slots)
-    doc.fontSize(9).font('Helvetica-Bold');
+    // Step 2: Draw header row (time slots) - force small fonts
+    const headerFontSize = 4; // Force small headers
+    doc.fontSize(headerFontSize).font('Helvetica-Bold');
     
     // Empty cell for day column
-    this._drawCell(doc, startX, startY, dayColumnWidth, this.headerRowHeight, '', '#f0f0f0', true);
+    this._drawCell(doc, startX, startY, dayColumnWidth, headerRowHeight, '', '#f0f0f0', true);
     
     // Time slot headers
     timeSlots.forEach((timeSlot, index) => {
       const x = startX + dayColumnWidth + (index * timeColumnWidth);
       const headerText = timeSlot.isBreak ? 'BREAK' : `${timeSlot.startTime}-${timeSlot.endTime}`;
-      this._drawCell(doc, x, startY, timeColumnWidth, this.headerRowHeight, headerText, '#f0f0f0', true);
+      this._drawCell(doc, x, startY, timeColumnWidth, headerRowHeight, headerText, '#f0f0f0', true);
     });
 
     // Step 3: Draw day rows
     days.forEach((day, dayIndex) => {
-      const y = startY + this.headerRowHeight + (dayIndex * rowHeight);
+      const y = startY + headerRowHeight + (dayIndex * rowHeight);
       
-      // Day name cell
-      doc.fontSize(10).font('Helvetica-Bold');
+      // Day name cell - force small fonts
+      const dayFontSize = 5; // Force small day names
+      doc.fontSize(dayFontSize).font('Helvetica-Bold');
       this._drawCell(doc, startX, y, dayColumnWidth, rowHeight, day, '#f8f8f8', true);
       
       // Time slot cells for this day with spanning class support
@@ -1285,9 +1598,11 @@ class PDFRoutineService {
                   slot.display?.teacherShortNames?.join(', ') || 'TBA'
                 );
                 
-                // Get room name (only if not room PDF)
+                // Get room name (only for practical classes, not for lecture and tutorial)
                 const roomName = pdfType === 'room' ? '' : (
-                  slot.roomName_display || slot.roomId?.name || slot.display?.roomName || 'TBA'
+                  slot.classType === 'P' ? ( // Only show room for practical classes
+                    slot.roomName_display || slot.roomId?.name || slot.display?.roomName || 'TBA'
+                  ) : ''
                 );
                 
                 // Enhanced lab group indicator with section awareness
@@ -1305,8 +1620,30 @@ class PDFRoutineService {
                   labGroupIndicator = ` (${displayGroup})`;
                 }
                 
+                // Apply intelligent text wrapping to long subject names (for merged classes)
+                let wrappedSubjectName = subjectName;
+                const maxLineLength = 20; // Slightly shorter for merged classes
+                const fullSubjectText = subjectName + labGroupIndicator;
+                
+                if (fullSubjectText.length > maxLineLength) {
+                  const words = subjectName.split(' ');
+                  if (words.length >= 2) {
+                    // Split into two lines, trying to balance the length
+                    const midPoint = Math.ceil(words.length / 2);
+                    const firstLine = words.slice(0, midPoint).join(' ');
+                    const secondLine = words.slice(midPoint).join(' ');
+                    wrappedSubjectName = `${firstLine}\n${secondLine}`;
+                  } else if (subjectName.includes('&')) {
+                    // Handle subjects with "&" by breaking at that point
+                    wrappedSubjectName = subjectName.replace(' & ', '\n& ');
+                  } else if (subjectName.includes('-')) {
+                    // Handle subjects with "-" by breaking at that point
+                    wrappedSubjectName = subjectName.replace(' - ', '\n- ');
+                  }
+                }
+                
                 return {
-                  subjectName: subjectName + labGroupIndicator,
+                  subjectName: `${wrappedSubjectName}${labGroupIndicator} [${classType}]`,
                   classType: classType,
                   teacherNames: teacherNames,
                   roomName: roomName
@@ -1315,20 +1652,20 @@ class PDFRoutineService {
               
               // Format merged classes based on PDF type
               if (pdfType === 'teacher') {
-                // Teacher PDF: Show subject, class type, and room only
+                // Teacher PDF: Show subject with class type, and room only (for practical classes)
                 cellContent = classInfos.map(info => 
-                  info.roomName ? `${info.subjectName}\n[${info.classType}]\n${info.roomName}` : `${info.subjectName}\n[${info.classType}]`
+                  info.roomName ? `${info.subjectName}\n${info.roomName}` : `${info.subjectName}`
                 ).join('\n──────\n');
               } else if (pdfType === 'room') {
-                // Room PDF: Show subject, class type, and teacher only, plus section info
+                // Room PDF: Show subject with class type, and teacher with section info (no room names)
                 cellContent = classInfos.map(info => {
                   const section = `${slotsInCell[0].programCode}-${slotsInCell[0].semester}${slotsInCell[0].section}`;
-                  return info.teacherNames ? `${section}\n${info.subjectName}\n[${info.classType}]\n${info.teacherNames}` : `${section}\n${info.subjectName}\n[${info.classType}]`;
+                  return info.teacherNames ? `${section}\n${info.subjectName}\n${info.teacherNames}` : `${section}\n${info.subjectName}`;
                 }).join('\n──────\n');
               } else {
-                // Class PDF: Show all information (original format)
+                // Class PDF: Show information with conditional room display
                 cellContent = classInfos.map(info => 
-                  `${info.subjectName}\n[${info.classType}]\n${info.teacherNames}\n${info.roomName}`
+                  info.roomName ? `${info.subjectName}\n${info.teacherNames}\n${info.roomName}` : `${info.subjectName}\n${info.teacherNames}`
                 ).join('\n──────\n');
               }
             }
@@ -1361,15 +1698,17 @@ class PDFRoutineService {
                 slot.display?.teacherShortNames?.join(', ') || 'TBA'
               );
               
-              // Room name (only if not room PDF)
+              // Room name (only for practical classes, not for lecture and tutorial)
               const roomName = pdfType === 'room' ? '' : (
-                slot.roomName_display || 
-                slot.roomId?.name || 
-                slot.display?.roomName || 
-                slot.room?.name ||
-                slot.roomName ||
-                slot.roomId ||
-                'TBA'
+                slot.classType === 'P' ? ( // Only show room for practical classes
+                  slot.roomName_display || 
+                  slot.roomId?.name || 
+                  slot.display?.roomName || 
+                  slot.room?.name ||
+                  slot.roomName ||
+                  slot.roomId ||
+                  'TBA'
+                ) : ''
               );
               
               // Enhanced lab group indicator with section awareness (for practical classes or alternative weeks)
@@ -1387,15 +1726,37 @@ class PDFRoutineService {
                 labGroupIndicator = ` (${displayGroup})`;
               }
               
+              // Apply intelligent text wrapping to long subject names
+              let wrappedSubjectName = subjectName;
+              const maxLineLength = 24; // Approximate character limit per line for current cell width
+              const fullSubjectText = subjectName + labGroupIndicator;
+              
+              if (fullSubjectText.length > maxLineLength) {
+                const words = subjectName.split(' ');
+                if (words.length >= 2) {
+                  // Split into two lines, trying to balance the length
+                  const midPoint = Math.ceil(words.length / 2);
+                  const firstLine = words.slice(0, midPoint).join(' ');
+                  const secondLine = words.slice(midPoint).join(' ');
+                  wrappedSubjectName = `${firstLine}\n${secondLine}`;
+                } else if (subjectName.includes('&')) {
+                  // Handle subjects with "&" by breaking at that point
+                  wrappedSubjectName = subjectName.replace(' & ', '\n& ');
+                } else if (subjectName.includes('-')) {
+                  // Handle subjects with "-" by breaking at that point
+                  wrappedSubjectName = subjectName.replace(' - ', '\n- ');
+                }
+              }
+              
               // Format content based on PDF type and class type
               if (pdfType === 'teacher') {
-                // Teacher PDF: Don't show teacher names, show room for context
+                // Teacher PDF: Don't show teacher names, show room for context (only for practical)
                 if (slot.classType === 'P') {
-                  // Practical class: just show room if available
-                  cellContent = roomName ? `${subjectName}${labGroupIndicator}\n[${classType}]\n${roomName}` : `${subjectName}${labGroupIndicator}\n[${classType}]`;
+                  // Practical class: show room if available
+                  cellContent = roomName ? `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${roomName}` : `${wrappedSubjectName}${labGroupIndicator} [${classType}]`;
                 } else {
-                  // Lecture class: show room on separate line
-                  cellContent = roomName ? `${subjectName}${labGroupIndicator}\n[${classType}]\n${roomName}` : `${subjectName}${labGroupIndicator}\n[${classType}]`;
+                  // Lecture/Tutorial class: no room needed
+                  cellContent = `${wrappedSubjectName}${labGroupIndicator} [${classType}]`;
                 }
               } else if (pdfType === 'room') {
                 // Room PDF: Don't show room name, show teacher and section for context
@@ -1403,20 +1764,20 @@ class PDFRoutineService {
                 if (slot.classType === 'P') {
                   // Practical class: show section and teacher side by side
                   const sectionTeacherLine = teacherNames ? `${section} | ${teacherNames}` : section;
-                  cellContent = `${subjectName}${labGroupIndicator}\n[${classType}]\n${sectionTeacherLine}`;
+                  cellContent = `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${sectionTeacherLine}`;
                 } else {
                   // Lecture class: show section and teacher on separate lines
-                  cellContent = teacherNames ? `${section}\n${subjectName}${labGroupIndicator}\n[${classType}]\n${teacherNames}` : `${section}\n${subjectName}${labGroupIndicator}\n[${classType}]`;
+                  cellContent = teacherNames ? `${section}\n${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${teacherNames}` : `${section}\n${wrappedSubjectName}${labGroupIndicator} [${classType}]`;
                 }
               } else {
-                // Class PDF: Show all information (original format)
+                // Class PDF: Show all information
                 if (slot.classType === 'P') {
                   // Practical class: Teacher | Room format for space efficiency
-                  const teacherRoomLine = `${teacherNames} | ${roomName}`;
-                  cellContent = `${subjectName}${labGroupIndicator}\n[${classType}]\n${teacherRoomLine}`;
+                  const teacherRoomLine = roomName ? `${teacherNames} | ${roomName}` : teacherNames;
+                  cellContent = `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${teacherRoomLine}`;
                 } else {
-                  // Lecture class: Traditional format with separate lines
-                  cellContent = `${subjectName}${labGroupIndicator}\n[${classType}]\n${teacherNames}\n${roomName}`;
+                  // Lecture/Tutorial class: Only show teacher, no room
+                  cellContent = `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${teacherNames}`;
                 }
               }
             }
@@ -1455,17 +1816,28 @@ class PDFRoutineService {
       // Split text into lines and check for merged classes
       const lines = text.split('\n').filter(line => line.trim());
       const isMergedClass = text.includes('──────'); // Merged class separator
+      const isMultiGroupClass = isMergedClass || 
+                              (text && text.includes('Multiple Groups')) || 
+                              (text && text.includes('Group A & Group B')) ||
+                              (text && text.includes('Group C & Group D')) ||
+                              (text && text.includes(' & ')) || // General pattern for joined groups
+                              (text && /\(Group [A-D] & Group [A-D]\)/.test(text));
       
-      // Dynamic font sizing based on content length - Significantly increased for easy reading
+      // Force small font sizes for all content
+      const fontSizeMultiplier = 0.75; // Force 50% reduction
+      
+      // Dynamic font sizing based on content length - force small fonts
       let fontSize;
       if (isHeader) {
-        fontSize = 14; // Increased from 12 to 14 for headers
+        fontSize = Math.round(10 * fontSizeMultiplier); // Force small headers
+      } else if (isMultiGroupClass) {
+        fontSize = Math.round(8 * fontSizeMultiplier); // Force small multi-group text
       } else if (isMergedClass || lines.length > 8) {
-        fontSize = 11; // Increased from 9 to 11 for merged classes with lots of content
+        fontSize = Math.round(7 * fontSizeMultiplier); // Force small merged class text
       } else if (lines.length > 5) {
-        fontSize = 12; // Increased from 10 to 12 for moderately long content
+        fontSize = Math.round(7 * fontSizeMultiplier); // Much smaller moderately long content for A4
       } else {
-        fontSize = 13; // Increased from 11 to 13 for standard content
+        fontSize = Math.round(8 * fontSizeMultiplier); // Much smaller standard content for A4
       }
       
       const font = isHeader ? 'Helvetica-Bold' : (isLab ? 'Helvetica-Bold' : 'Helvetica');
@@ -1475,24 +1847,26 @@ class PDFRoutineService {
          .font(font)
          .fillColor(textColor);
       
-      const lineHeight = fontSize * (isMergedClass ? 1.4 : 1.9); // Slightly reduced spacing while maintaining readability and ensuring all content fits
+      const lineHeight = fontSize * (isMergedClass || isMultiGroupClass ? 1.3 : 1.2); // Better line spacing for multi-group content
       const totalTextHeight = lines.length * lineHeight;
+      
+      // Detect elective classes and apply increased spacing between subject and teacher
+      const isElectiveClass = text && (text.includes('---') || (lines.length >= 2 && /^[A-Z]{2,4}$/.test(lines[lines.length - 1].trim())));
       
       // Calculate vertical position - special handling for practical classes
       let textStartY;
       
-      // Check if this is a practical class with Group A/B content
+      // Check if this is a practical class with Group A/B content or multi-group content
       const isPracticalClass = isLab || (text && text.includes('| ')) || (text && text.includes('Group A')) || (text && text.includes('Group B'));
       
-      if (isPracticalClass) {
-        // For practical classes: decrease top margin, increase bottom margin but ensure content stays within boundaries
-        const topMarginReduction = height * 0.12; // Reduced from 0.15 to 0.12 for better boundary control
+      if (isPracticalClass || isMultiGroupClass) {
+        // For practical/multi-group classes: better vertical centering with proper spacing
         const cellCenterY = y + (height / 2);
-        const proposedStartY = cellCenterY - (totalTextHeight / 2) + (lineHeight * 0.4) - topMarginReduction;
+        const proposedStartY = cellCenterY - (totalTextHeight / 2);
         
-        // Ensure text starts within cell boundaries with minimum top padding
-        const minTopPadding = 8; // Minimum pixels from top edge
-        const maxBottomY = y + height - 8; // Maximum Y position (8px from bottom edge)
+        // Ensure text starts within cell boundaries with minimal top padding
+        const minTopPadding = 4; // Slightly increased for better spacing
+        const maxBottomY = y + height - 4; // Better bottom margin
         
         textStartY = Math.max(proposedStartY, y + minTopPadding);
         
@@ -1501,13 +1875,13 @@ class PDFRoutineService {
           textStartY = Math.max(y + minTopPadding, maxBottomY - totalTextHeight);
         }
       } else {
-        // For lecture classes: use standard centering with boundary checks
+        // For lecture classes: start very close to top for compact cells
         const cellCenterY = y + (height / 2);
-        const proposedStartY = cellCenterY - (totalTextHeight / 2) + (lineHeight * 0.75);
+        const proposedStartY = cellCenterY - (totalTextHeight / 2) + (lineHeight * 0.1); // Minimal offset
         
-        // Ensure content stays within cell boundaries
-        const minTopPadding = 6;
-        const maxBottomY = y + height - 6;
+        // Ensure content stays within cell boundaries with minimal padding
+        const minTopPadding = 2; // Reduced to 2 pixels
+        const maxBottomY = y + height - 2; // Reduced bottom margin to 2px
         
         textStartY = Math.max(proposedStartY, y + minTopPadding);
         if (textStartY + totalTextHeight > maxBottomY) {
@@ -1516,9 +1890,21 @@ class PDFRoutineService {
       }
       
       // Draw each line with horizontal centering and border lines for separators
+      let cumulativeY = textStartY;
       lines.forEach((line, index) => {
         if (line.trim()) {
-          const lineY = textStartY + (index * lineHeight);
+          // Apply increased spacing for elective classes between subject and teacher
+          let extraSpacing = 0;
+          if (isElectiveClass && index > 0) {
+            // Check if this line looks like a teacher name (short, all caps)
+            const isTeacherLine = /^[A-Z]{2,4}$/.test(line.trim());
+            if (isTeacherLine) {
+              extraSpacing = fontSize * 0.8; // Add extra spacing before teacher name
+            }
+          }
+          
+          const lineY = cumulativeY + extraSpacing;
+          cumulativeY = lineY + lineHeight; // Update for next line
           
           // Safety check: ensure line doesn't go beyond cell boundaries
           if (lineY < y || lineY + fontSize > y + height) {
@@ -1546,8 +1932,8 @@ class PDFRoutineService {
             }
           } else {
             // Use PDFKit's built-in text alignment for perfect centering with improved spacing
-            doc.text(line.trim(), x + 6, lineY, { // Increased padding from 4 to 6 for better text layout
-              width: width - 12, // 6px padding on each side for proper text spacing
+            doc.text(line.trim(), x + 6, lineY, { // Better horizontal padding for multi-group content
+              width: width - 12, // 6px padding on each side for better text spacing
               align: 'center',
               baseline: 'top'
             });
@@ -1663,9 +2049,10 @@ class PDFRoutineService {
           slot.teacherShortNames_display?.join(', ') || 
           slot.teacherIds?.map(t => t.shortName).filter(Boolean).join(', ') || 
           slot.display?.teacherShortNames?.join(', ') || 
+          
           slot.teacherId?.name || slot.teacherName_display || 'TBA'
         ),
-        room: pdfType === 'room' ? '' : roomName,
+        room: pdfType === 'room' ? '' : (slot.classType === 'P' ? roomName : ''), // Only show room for practical classes
         programCode: slot.programCode,
         semester: slot.semester,
         slot: slot
@@ -1732,15 +2119,19 @@ class PDFRoutineService {
         
         if (pdfType === 'teacher') {
           // Teacher PDF: Show subject and room only (no teacher names)
-          return group.room ? `${labGroupInfo} ${subject.subjectName}\n[${classType}]\n${group.room}` : `${labGroupInfo} ${subject.subjectName}\n[${classType}]`;
+          return group.room ? `${labGroupInfo} ${subject.subjectName} [${classType}]\n${group.room}` : `${labGroupInfo} ${subject.subjectName} [${classType}]`;
         } else if (pdfType === 'room') {
           // Room PDF: Show subject and teacher with section info (no room names)
           const section = `${group.programCode}-${group.semester}${subject.section}`;
           const sectionTeacherLine = group.teacher ? `${section} | ${group.teacher}` : section;
-          return `${labGroupInfo} ${subject.subjectName}\n[${classType}]\n${sectionTeacherLine}`;
+          return `${labGroupInfo} ${subject.subjectName} [${classType}]\n${sectionTeacherLine}`;
         } else {
-          // Class PDF: Show teacher and room side by side for practical classes with enhanced layout
-          return `${labGroupInfo} ${subject.subjectName}\n[${classType}]\n${group.teacher} | ${group.room}`;
+          // Class PDF: Show teacher and room side by side for practical classes (room only for practical)
+          if (group.room) {
+            return `${labGroupInfo} ${subject.subjectName} [${classType}]\n${group.teacher} | ${group.room}`;
+          } else {
+            return `${labGroupInfo} ${subject.subjectName} [${classType}]\n${group.teacher}`;
+          }
         }
       } else {
         // Multiple groups - show as merged multi-group class using our consolidated data
@@ -1749,20 +2140,24 @@ class PDFRoutineService {
           : 'Multiple Groups';
         
         if (pdfType === 'teacher') {
-          // Teacher PDF: Show subject with group info and rooms
+          // Teacher PDF: Show subject with group info and rooms (only for practical classes)
           const rooms = uniqueRooms.join(' / ');
-          return rooms ? `(${groupLabels}) ${subject.subjectName}\n[${classType}]\n${rooms}` : `(${groupLabels}) ${subject.subjectName}\n[${classType}]`;
+          return rooms ? `(${groupLabels}) ${subject.subjectName} [${classType}]\n${rooms}` : `(${groupLabels}) ${subject.subjectName} [${classType}]`;
         } else if (pdfType === 'room') {
           // Room PDF: Show subject with group info and teachers with section
           const section = `${sortedGroups[0].programCode}-${sortedGroups[0].semester}${subject.section}`;
           const teachers = uniqueTeachers.join(' / ');
           const sectionTeacherLine = teachers ? `${section} | ${teachers}` : section;
-          return `(${groupLabels}) ${subject.subjectName}\n[${classType}]\n${sectionTeacherLine}`;
+          return `(${groupLabels}) ${subject.subjectName} [${classType}]\n${sectionTeacherLine}`;
         } else {
-          // Class PDF: Show merged groups with teachers and rooms on the same line
+          // Class PDF: Show merged groups with teachers and rooms (rooms only for practical classes)
           const teachersLine = uniqueTeachers.join(', ');
           const roomsLine = uniqueRooms.join(', ');
-          return `(${groupLabels}) ${subject.subjectName}\n[${classType}]\n${teachersLine} | ${roomsLine}`;
+          if (roomsLine) {
+            return `(${groupLabels}) ${subject.subjectName} [${classType}]\n${teachersLine} | ${roomsLine}`;
+          } else {
+            return `(${groupLabels}) ${subject.subjectName} [${classType}]\n${teachersLine}`;
+          }
         }
       }
     });
@@ -1783,15 +2178,17 @@ class PDFRoutineService {
       firstSlot.teacherId?.name || firstSlot.teacherName_display || 'TBA'
     );
     
-    // Room name (only if not room PDF)
+    // Room name (only for practical classes, not for lecture and tutorial)
     const roomName = pdfType === 'room' ? '' : (
-      firstSlot.roomName_display || 
-      firstSlot.roomId?.name || 
-      firstSlot.display?.roomName || 
-      firstSlot.room?.name ||
-      firstSlot.roomName ||
-      firstSlot.roomId ||
-      'TBA'
+      firstSlot.classType === 'P' ? ( // Only show room for practical classes
+        firstSlot.roomName_display || 
+        firstSlot.roomId?.name || 
+        firstSlot.display?.roomName || 
+        firstSlot.room?.name ||
+        firstSlot.roomName ||
+        firstSlot.roomId ||
+        'TBA'
+      ) : ''
     );
     
     // Enhanced lab group indicator with section awareness
@@ -1811,27 +2208,27 @@ class PDFRoutineService {
     
     // Format based on PDF type and class type
     if (pdfType === 'teacher') {
-      // Teacher PDF: Don't show teacher names, show room for context
-      return roomName ? `${labGroupIndicator} ${subjectName}\n[${classType}]\n${roomName}` : `${labGroupIndicator} ${subjectName}\n[${classType}]`;
+      // Teacher PDF: Don't show teacher names, show room for context (only for practical)
+      return roomName ? `${labGroupIndicator} ${subjectName} [${classType}]\n${roomName}` : `${labGroupIndicator} ${subjectName} [${classType}]`;
     } else if (pdfType === 'room') {
       // Room PDF: Don't show room name, show teacher and section for context
       const section = `${firstSlot.programCode}-${firstSlot.semester}${firstSlot.section}`;
       if (firstSlot.classType === 'P') {
         // Practical class: show section and teacher side by side
         const sectionTeacherLine = teacherNames ? `${section} | ${teacherNames}` : section;
-        return `${labGroupIndicator} ${subjectName}\n[${classType}]\n${sectionTeacherLine}`;
+        return `${labGroupIndicator} ${subjectName} [${classType}]\n${sectionTeacherLine}`;
       } else {
         // Lecture class: show section and teacher on separate lines
-        return teacherNames ? `${section}\n${labGroupIndicator} ${subjectName}\n[${classType}]\n${teacherNames}` : `${section}\n${labGroupIndicator} ${subjectName}\n[${classType}]`;
+        return teacherNames ? `${section}\n${labGroupIndicator} ${subjectName} [${classType}]\n${teacherNames}` : `${section}\n${labGroupIndicator} ${subjectName} [${classType}]`;
       }
     } else {
-      // Class PDF: Show all information (original format)
+      // Class PDF: Show information with conditional room display
       if (firstSlot.classType === 'P') {
         // Practical class: Teacher | Room format for space efficiency
-        return `${labGroupIndicator} ${subjectName}\n[${classType}]\n${teacherNames} | ${roomName}`;
+        return roomName ? `${labGroupIndicator} ${subjectName} [${classType}]\n${teacherNames} | ${roomName}` : `${labGroupIndicator} ${subjectName} [${classType}]\n${teacherNames}`;
       } else {
-        // Lecture class: Traditional format with teacher | room on same line
-        return `${labGroupIndicator} ${subjectName}\n[${classType}]\n${teacherNames} | ${roomName}`;
+        // Lecture/Tutorial class: Only show teacher, no room
+        return `${labGroupIndicator} ${subjectName} [${classType}]\n${teacherNames}`;
       }
     }
   }
@@ -1841,9 +2238,9 @@ class PDFRoutineService {
    */
   _getClassTypeText(classType) {
     switch (classType) {
-      case 'L': return 'Lecture';
-      case 'P': return 'Practical';
-      case 'T': return 'Tutorial';
+      case 'L': return 'L';
+      case 'P': return 'P';
+      case 'T': return 'T';
       case 'BREAK': return 'Break';
       default: return classType || 'N/A';
     }
