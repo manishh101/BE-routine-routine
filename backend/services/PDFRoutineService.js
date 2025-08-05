@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 const RoutineSlot = require('../models/RoutineSlot');
 const TimeSlot = require('../models/TimeSlot');
 const Program = require('../models/Program');
+const { getTimeSlotsSorted } = require('../utils/timeSlotUtils');
 
 class PDFRoutineService {
 
@@ -95,7 +96,7 @@ class PDFRoutineService {
       }
 
       // Get time slots for grid structure
-      const timeSlots = await TimeSlot.find().sort({ sortOrder: 1 });
+      const timeSlots = await getTimeSlotsSorted();
 
       // Determine optimal page size based on schedule complexity (same as class routine)
       const optimalSize = this._getOptimalPageSize(routineSlots, timeSlots);
@@ -179,7 +180,7 @@ class PDFRoutineService {
       }
 
       // Get time slots for grid structure
-      const timeSlots = await TimeSlot.find().sort({ sortOrder: 1 });
+      const timeSlots = await getTimeSlotsSorted();
 
       // Determine optimal page size based on schedule complexity (same as class routine)
       const optimalSize = this._getOptimalPageSize(routineSlots, timeSlots);
@@ -251,7 +252,7 @@ class PDFRoutineService {
       }
 
       // Get time slots for optimal sizing calculation
-      const timeSlots = await TimeSlot.find().sort({ sortOrder: 1 });
+      const timeSlots = await getTimeSlotsSorted();
 
       // Create PDF document with dynamic sizing based on first teacher's schedule complexity
       const firstTeacherSlots = await RoutineSlot.find({
@@ -337,7 +338,7 @@ class PDFRoutineService {
       console.log(`📄 Generating class schedule PDF for ${programCode}-${semester}-${section}`);
 
       // Get routine data - Step 1: Get TimeSlots first (mirroring frontend)
-      const timeSlots = await TimeSlot.find().sort({ sortOrder: 1 });
+      const timeSlots = await getTimeSlotsSorted();
       if (!timeSlots || timeSlots.length === 0) {
         console.log('No time slots found in database');
         return null;
@@ -445,7 +446,7 @@ class PDFRoutineService {
       console.log(`Found sections: ${sections.join(', ')}`);
 
       // Get time slots for optimal sizing calculation
-      const timeSlots = await TimeSlot.find().sort({ sortOrder: 1 });
+      const timeSlots = await getTimeSlotsSorted();
 
       // Create PDF document with dynamic sizing based on first section's schedule complexity
       const firstSectionSlots = await RoutineSlot.find({
@@ -556,7 +557,7 @@ class PDFRoutineService {
       }
 
       // Get time slots for optimal sizing calculation
-      const timeSlots = await TimeSlot.find().sort({ sortOrder: 1 });
+      const timeSlots = await getTimeSlotsSorted();
 
       // Create PDF document with dynamic sizing based on first room's schedule complexity
       const firstRoomSlots = await RoutineSlot.find({
@@ -940,12 +941,12 @@ class PDFRoutineService {
     
     // First pass: Map all slots
     routineSlots.forEach(slot => {
-      // The API uses slotIndex (1-based) to map to timeSlots array (0-based)
-      if (slot.slotIndex !== undefined && timeSlots[slot.slotIndex - 1]) {
-        // Convert 1-based slotIndex to 0-based array index
-        const timeSlotArrayIndex = slot.slotIndex - 1;
-        const timeSlotId = timeSlots[timeSlotArrayIndex]._id.toString();
-        const timeSlot = timeSlots[timeSlotArrayIndex];
+      // CRITICAL FIX: slotIndex should match TimeSlot._id, not array position
+      // Find the timeSlot where _id matches the slotIndex
+      const timeSlot = timeSlots.find(ts => ts._id === slot.slotIndex);
+      
+      if (timeSlot) {
+        const timeSlotId = timeSlot._id.toString();
         const key = `${slot.dayIndex}-${timeSlotId}`;
         
         if (!routineMap.has(key)) {
@@ -971,7 +972,9 @@ class PDFRoutineService {
         
         console.log(`  ✅ Direct mapping: timeSlotId ${timeSlotId} -> key: ${key} -> subject: ${slot.subjectId?.code || slot.subjectCode_display || 'N/A'}`);
       } else {
-        console.warn(`  ❌ Unable to map slot: dayIndex=${slot.dayIndex}, slotIndex=${slot.slotIndex}, timeSlotId=${slot.timeSlotId}, available timeSlots=${timeSlots.length}`);
+        const availableTimeSlotIds = timeSlots.map(ts => ts._id).join(', ');
+        console.warn(`  ❌ Unable to map slot: dayIndex=${slot.dayIndex}, slotIndex=${slot.slotIndex}, timeSlotId=${slot.timeSlotId}`);
+        console.warn(`     Available TimeSlot IDs: ${availableTimeSlotIds}`);
       }
     });
 
@@ -979,10 +982,32 @@ class PDFRoutineService {
     console.log('🔍 Detecting spanning classes and practical class groups...');
     
     days.forEach((day, dayIndex) => {
-      const daySlots = routineSlots.filter(slot => slot.dayIndex === dayIndex)
-                                   .sort((a, b) => a.slotIndex - b.slotIndex);
+      const daySlots = routineSlots.filter(slot => slot.dayIndex === dayIndex);
+      
+      // Sort by the actual time order using TimeSlot sortOrder, not slotIndex
+      daySlots.sort((a, b) => {
+        const timeSlotA = timeSlots.find(ts => ts._id === a.slotIndex);
+        const timeSlotB = timeSlots.find(ts => ts._id === b.slotIndex);
+        
+        if (!timeSlotA || !timeSlotB) {
+          console.warn(`Missing timeSlot for slotIndex: ${!timeSlotA ? a.slotIndex : b.slotIndex}`);
+          return 0;
+        }
+        
+        return timeSlotA.sortOrder - timeSlotB.sortOrder;
+      });
       
       if (daySlots.length === 0) return;
+      
+      // Helper function to check if two slots are consecutive in time order
+      const areConsecutiveSlots = (slotIndex1, slotIndex2) => {
+        const timeSlot1 = timeSlots.find(ts => ts._id === slotIndex1);
+        const timeSlot2 = timeSlots.find(ts => ts._id === slotIndex2);
+        
+        if (!timeSlot1 || !timeSlot2) return false;
+        
+        return timeSlot2.sortOrder === timeSlot1.sortOrder + 1;
+      };
       
       let currentSpan = null;
       const spans = [];
@@ -1013,7 +1038,7 @@ class PDFRoutineService {
               slots: [...slotsInSlot],
               type: 'practical-group'
             };
-          } else if (slotIndex === currentPracticalGroup.endSlot + 1) {
+          } else if (areConsecutiveSlots(currentPracticalGroup.endSlot, slotIndex)) {
             // Check if this continues the same practical class or is a new one
             const currentSubjects = currentPracticalGroup.slots.map(s => s.subjectId?.code || s.subjectCode_display).filter(Boolean);
             const newSubjects = slotsInSlot.map(s => s.subjectId?.code || s.subjectCode_display).filter(Boolean);
@@ -1101,7 +1126,7 @@ class PDFRoutineService {
           };
         } else if (currentSpan.subject === subjectIdentifier && 
                    currentSpan.classType === slot.classType &&
-                   slot.slotIndex === currentSpan.endSlot + 1) {
+                   areConsecutiveSlots(currentSpan.endSlot, slot.slotIndex)) {
           // Continue current span
           currentSpan.endSlot = slot.slotIndex;
           currentSpan.slots.push(slot);

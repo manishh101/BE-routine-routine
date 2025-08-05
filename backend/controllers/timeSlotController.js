@@ -1,5 +1,6 @@
 const TimeSlot = require('../models/TimeSlot');
 const { validationResult } = require('express-validator');
+const { getTimeSlotsSorted, findInsertPosition, reorderTimeSlots } = require('../utils/timeSlotUtils');
 
 // @desc    Create a new time slot
 // @route   POST /api/time-slots
@@ -29,14 +30,6 @@ exports.createTimeSlot = async (req, res) => {
     if (!req.body.sortOrder) {
       const newStartTime = req.body.startTime;
       
-      // Convert time string to minutes for comparison
-      const timeToMinutes = (timeStr) => {
-        const [hours, minutes] = timeStr.split(':').map(Number);
-        return hours * 60 + minutes;
-      };
-      
-      const newStartMinutes = timeToMinutes(newStartTime);
-      
       // Get existing time slots for the same context (global or specific program/semester/section)
       const contextFilter = isContextSpecific 
         ? { 
@@ -49,25 +42,9 @@ exports.createTimeSlot = async (req, res) => {
       
       const existingSlots = await TimeSlot.find(contextFilter).sort({ sortOrder: 1 });
       
-      let insertPosition = 1;
-      let foundPosition = false;
+      const { insertPosition, foundPosition } = findInsertPosition(newStartTime, existingSlots);
       
-      for (let i = 0; i < existingSlots.length; i++) {
-        const existingStartMinutes = timeToMinutes(existingSlots[i].startTime);
-        
-        if (newStartMinutes < existingStartMinutes) {
-          // New slot should be inserted before this existing slot
-          insertPosition = existingSlots[i].sortOrder;
-          foundPosition = true;
-          break;
-        }
-      }
-      
-      if (!foundPosition) {
-        // New slot should be added at the end
-        const lastSlot = existingSlots[existingSlots.length - 1];
-        insertPosition = lastSlot ? lastSlot.sortOrder + 1 : 1;
-      } else {
+      if (foundPosition) {
         // Shift all subsequent slots in the same context by 1 to make room
         await TimeSlot.updateMany(
           { 
@@ -258,7 +235,14 @@ exports.initializeTimeSlots = async (req, res) => {
 // @access  Private
 exports.getTimeSlotById = async (req, res) => {
   try {
-    const timeSlot = await TimeSlot.findById(req.params.id);
+    // Convert the ID to number since TimeSlot._id is a Number
+    const timeSlotId = parseInt(req.params.id);
+    
+    if (isNaN(timeSlotId)) {
+      return res.status(400).json({ msg: 'Invalid time slot ID. Must be a number.' });
+    }
+    
+    const timeSlot = await TimeSlot.findById(timeSlotId);
     
     if (!timeSlot) {
       return res.status(404).json({ msg: 'Time slot not found' });
@@ -281,14 +265,21 @@ exports.updateTimeSlot = async (req, res) => {
   }
 
   try {
-    let timeSlot = await TimeSlot.findById(req.params.id);
+    // Convert the ID to number since TimeSlot._id is a Number
+    const timeSlotId = parseInt(req.params.id);
+    
+    if (isNaN(timeSlotId)) {
+      return res.status(400).json({ msg: 'Invalid time slot ID. Must be a number.' });
+    }
+    
+    let timeSlot = await TimeSlot.findById(timeSlotId);
     
     if (!timeSlot) {
       return res.status(404).json({ msg: 'Time slot not found' });
     }
 
     timeSlot = await TimeSlot.findByIdAndUpdate(
-      req.params.id,
+      timeSlotId,
       { $set: req.body },
       { new: true, runValidators: true }
     );
@@ -423,37 +414,64 @@ exports.bulkDeleteTimeSlots = async (req, res) => {
 // @access  Private/Admin
 exports.deleteTimeSlot = async (req, res) => {
   try {
-    const timeSlot = await TimeSlot.findById(req.params.id);
+    console.log('Delete time slot request for ID:', req.params.id, typeof req.params.id);
+    
+    // Convert the ID to number since TimeSlot._id is a Number
+    const timeSlotId = parseInt(req.params.id);
+    
+    if (isNaN(timeSlotId)) {
+      console.log('Invalid timeSlotId conversion:', req.params.id, '->', timeSlotId);
+      return res.status(400).json({ msg: 'Invalid time slot ID. Must be a number.' });
+    }
+    
+    console.log('Looking for TimeSlot with ID:', timeSlotId, typeof timeSlotId);
+    const timeSlot = await TimeSlot.findById(timeSlotId);
     
     if (!timeSlot) {
+      console.log('TimeSlot not found with ID:', timeSlotId);
       return res.status(404).json({ msg: 'Time slot not found' });
     }
 
+    console.log('Found TimeSlot:', timeSlot.label, timeSlot.startTime, '-', timeSlot.endTime);
+
     // Check if time slot is being used in routine slots
     const RoutineSlot = require('../models/RoutineSlot');
+    console.log('Checking usage with slotIndex:', timeSlotId);
     const usageCount = await RoutineSlot.countDocuments({
-      slotIndex: req.params.id,
+      slotIndex: timeSlotId,
       isActive: true
     });
+    
+    console.log('Usage count for slotIndex', timeSlotId, ':', usageCount);
 
     // Check for force delete parameter
     const forceDelete = req.query.force === 'true';
 
     if (usageCount > 0 && !forceDelete) {
       // Get sample usage info for better error message
-      const sampleUsage = await RoutineSlot.findOne({
-        slotIndex: req.params.id,
-        isActive: true
-      }).populate('subject teacher');
+      let sampleUsage = null;
+      try {
+        sampleUsage = await RoutineSlot.findOne({
+          slotIndex: timeSlotId,
+          isActive: true
+        }).populate('subjectId teacherIds');
+      } catch (populateError) {
+        console.warn('Populate error in delete time slot:', populateError.message);
+        // Fallback: get without populate if populate fails
+        sampleUsage = await RoutineSlot.findOne({
+          slotIndex: timeSlotId,
+          isActive: true
+        });
+      }
 
       return res.status(400).json({ 
         msg: `Cannot delete time slot. It is being used in ${usageCount} active routine slots.`,
         usageCount,
         canForceDelete: true,
         sampleUsage: sampleUsage ? {
-          subject: sampleUsage.subject?.name,
-          teacher: sampleUsage.teacher?.name,
-          day: sampleUsage.day
+          subject: sampleUsage.subjectId?.name || sampleUsage.display?.subjectName || 'Unknown Subject',
+          teacher: sampleUsage.teacherIds?.[0]?.name || sampleUsage.display?.teacherNames?.[0] || 'Unknown Teacher',
+          day: sampleUsage.dayIndex || sampleUsage.day || 'Unknown Day'
         } : null,
         suggestion: 'You can force delete this time slot, which will remove it from all routine slots, or first remove the time slot from routine assignments.'
       });
@@ -462,11 +480,11 @@ exports.deleteTimeSlot = async (req, res) => {
     if (forceDelete && usageCount > 0) {
       // Remove the time slot from all routine slots first
       await RoutineSlot.deleteMany({
-        slotIndex: req.params.id
+        slotIndex: timeSlotId
       });
     }
 
-    await TimeSlot.findByIdAndDelete(req.params.id);
+    await TimeSlot.findByIdAndDelete(timeSlotId);
     
     const responseMsg = forceDelete && usageCount > 0 
       ? `Time slot deleted successfully. Removed from ${usageCount} routine slots.`
@@ -487,23 +505,8 @@ exports.deleteTimeSlot = async (req, res) => {
 // @access  Private/Admin
 exports.reorderTimeSlots = async (req, res) => {
   try {
-    // Get all time slots and sort by start time
-    const timeSlots = await TimeSlot.find().sort({ startTime: 1 });
-    
-    // Update sortOrder to match chronological order
-    for (let i = 0; i < timeSlots.length; i++) {
-      await TimeSlot.findByIdAndUpdate(
-        timeSlots[i]._id,
-        { sortOrder: i + 1 },
-        { new: true }
-      );
-    }
-    
-    res.json({
-      success: true,
-      message: `Successfully reordered ${timeSlots.length} time slots chronologically`,
-      count: timeSlots.length
-    });
+    const result = await reorderTimeSlots();
+    res.json(result);
   } catch (err) {
     console.error('Reorder time slots error:', err.message);
     res.status(500).json({ 

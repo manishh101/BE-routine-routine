@@ -12,6 +12,7 @@ const AcademicCalendar = require('../models/AcademicCalendar');
 const { validationResult } = require('express-validator');
 const { publishToQueue } = require('../services/queue.service');
 const { ConflictDetectionService } = require('../services/conflictDetection');
+const { getTimeSlotsSorted, createTimeSlotMap } = require('../utils/timeSlotUtils');
 // Excel utilities have been removed
 const multer = require('multer');
 const path = require('path');
@@ -968,13 +969,10 @@ exports.assignClassSpanned = async (req, res) => {
     }
 
     // Get time slot displays for denormalized fields
-    const timeSlots = await TimeSlot.find().sort({ order: 1 });
+    const timeSlots = await getTimeSlotsSorted();
     
     // Create a map for slot ID to timeSlot lookup
-    const timeSlotMap = new Map();
-    timeSlots.forEach((slot) => {
-      timeSlotMap.set(slot._id, slot);
-    });
+    const timeSlotMap = createTimeSlotMap(timeSlots);
 
     // Convert all slot identifiers to integers (TimeSlot._id values)
     const actualSlotIndexes = slotIndexes.map(slot => {
@@ -2751,13 +2749,10 @@ exports.scheduleElectiveClassSpanned = async (req, res) => {
     }
 
     // Get time slot displays for denormalized fields
-    const timeSlots = await TimeSlot.find().sort({ order: 1 });
+    const timeSlots = await getTimeSlotsSorted();
     
     // Create a map for slot ID to timeSlot lookup
-    const timeSlotMap = new Map();
-    timeSlots.forEach((slot) => {
-      timeSlotMap.set(slot._id, slot);
-    });
+    const timeSlotMap = createTimeSlotMap(timeSlots);
 
     // Convert all slot identifiers to integers (TimeSlot._id values)
     const actualSlotIndexes = slotIndexes.map(slot => {
@@ -3704,7 +3699,7 @@ exports.getRoomVacancyForDay = async (req, res) => {
     const allRooms = await Room.find(roomFilter).sort({ building: 1, name: 1 });
 
     // Get all time slots
-    const timeSlots = await TimeSlot.find({}).sort({ slotIndex: 1 });
+    const timeSlots = await getTimeSlotsSorted();
 
     // Get all routine slots for this day
     const dayRoutineSlots = await RoutineSlot.find(routineSlotFilter)
