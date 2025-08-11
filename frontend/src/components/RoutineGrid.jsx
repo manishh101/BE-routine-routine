@@ -429,23 +429,13 @@ const RoutineGrid = ({
       return classData.labGroup ? `(Group ${classData.labGroup} - Alt Week)` : '(Alt Week)';
     }
     
-    // Regular lab group labels - use section-aware mapping
+    // Regular lab group labels - direct mapping (backend already stores correct values)
     if (classData.labGroup) {
       const sectionGroups = classData.section === 'CD' ? ['C', 'D'] : ['A', 'B'];
       if (classData.labGroup === 'ALL') {
         return `(Groups ${sectionGroups.join(' & ')})`;
       }
-      // Map the lab group based on section
-      if (classData.section === 'CD') {
-        if (classData.labGroup === 'A') return '(Group C)';
-        if (classData.labGroup === 'B') return '(Group D)';
-      } else {
-        if (classData.labGroup === 'A') return '(Group A)';
-        if (classData.labGroup === 'B') return '(Group B)';
-      }
-      // Direct mapping for C, D groups
-      if (classData.labGroup === 'C') return '(Group C)';
-      if (classData.labGroup === 'D') return '(Group D)';
+      // Direct mapping - backend stores the correct group values
       return `(Group ${classData.labGroup})`;
     }
     

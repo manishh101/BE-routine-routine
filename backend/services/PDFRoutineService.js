@@ -1460,16 +1460,8 @@ class PDFRoutineService {
                 // Enhanced lab group indicator with section awareness
                 let labGroupIndicator = '';
                 if ((slot.classType === 'P' || slot.isAlternativeWeek === true) && slot.labGroup && slot.labGroup !== 'ALL') {
-                  // Apply section-aware group mapping for practical classes
-                  const section = slot.section || 'AB';
-                  let displayGroup = slot.labGroup;
-                  
-                  if (section === 'CD') {
-                    // For CD section: A maps to C, B maps to D
-                    displayGroup = slot.labGroup === 'A' ? 'C' : slot.labGroup === 'B' ? 'D' : slot.labGroup;
-                  }
-                  
-                  labGroupIndicator = ` (${displayGroup})`;
+                  // Backend already stores correct group values (A,B for AB section; C,D for CD section)
+                  labGroupIndicator = ` (${slot.labGroup})`;
                 }
                 
                 // Apply intelligent text wrapping to long subject names (for merged classes)
@@ -1566,16 +1558,8 @@ class PDFRoutineService {
               // Enhanced lab group indicator with section awareness (for practical classes or alternative weeks)
               let labGroupIndicator = '';
               if ((slot.classType === 'P' || slot.isAlternativeWeek === true) && slot.labGroup && slot.labGroup !== 'ALL') {
-                // Apply section-aware group mapping
-                const section = slot.section || 'AB';
-                let displayGroup = slot.labGroup;
-                
-                if (section === 'CD') {
-                  // For CD section: A maps to C, B maps to D
-                  displayGroup = slot.labGroup === 'A' ? 'C' : slot.labGroup === 'B' ? 'D' : slot.labGroup;
-                }
-                
-                labGroupIndicator = ` (${displayGroup})`;
+                // Backend already stores correct group values (A,B for AB section; C,D for CD section)
+                labGroupIndicator = ` (${slot.labGroup})`;
               }
               
               // Apply intelligent text wrapping to long subject names
@@ -1883,14 +1867,8 @@ class PDFRoutineService {
       const labGroup = slot.labGroup || 'ALL';
       let enhancedLabGroup = '';
       if (labGroup && labGroup !== 'ALL') {
-        // Apply section-aware group mapping
-        if (section === 'CD') {
-          // For CD section: A maps to C, B maps to D
-          enhancedLabGroup = labGroup === 'A' ? 'C' : labGroup === 'B' ? 'D' : labGroup;
-        } else {
-          // For AB section: Direct mapping A -> A, B -> B
-          enhancedLabGroup = labGroup;
-        }
+        // Backend already stores correct group values (A,B for AB section; C,D for CD section)
+        enhancedLabGroup = labGroup;
       }
       
       // Add this group to the subject
@@ -1938,18 +1916,7 @@ class PDFRoutineService {
       const uniqueLabGroups = [...new Set(
         allSubjectSlots
           .filter(slot => slot.labGroup && slot.labGroup !== 'ALL')
-          .map(slot => {
-            // Apply section-aware group mapping
-            const section = slot.section || 'AB';
-            let displayGroup = slot.labGroup;
-            
-            if (section === 'CD') {
-              // For CD section: A maps to C, B maps to D
-              displayGroup = slot.labGroup === 'A' ? 'C' : slot.labGroup === 'B' ? 'D' : slot.labGroup;
-            }
-            
-            return displayGroup;
-          })
+          .map(slot => slot.labGroup) // Backend already stores correct group values
       )].sort();
       
       console.log('📊 Consolidated subject data:', {
@@ -2046,16 +2013,8 @@ class PDFRoutineService {
     // Enhanced lab group indicator with section awareness
     let labGroupIndicator = '';
     if ((firstSlot.classType === 'P' || firstSlot.isAlternativeWeek === true) && firstSlot.labGroup && firstSlot.labGroup !== 'ALL') {
-      // Apply section-aware group mapping
-      const section = firstSlot.section || 'AB';
-      let displayGroup = firstSlot.labGroup;
-      
-      if (section === 'CD') {
-        // For CD section: A maps to C, B maps to D
-        displayGroup = firstSlot.labGroup === 'A' ? 'C' : firstSlot.labGroup === 'B' ? 'D' : firstSlot.labGroup;
-      }
-      
-      labGroupIndicator = `(Group ${displayGroup})`;
+      // Backend already stores correct group values (A,B for AB section; C,D for CD section)
+      labGroupIndicator = `(Group ${firstSlot.labGroup})`;
     }
     
     // Format based on PDF type and class type

@@ -1174,7 +1174,7 @@ exports.assignClassSpanned = async (req, res) => {
     }
     
     // If this is a lab class (classType === 'P') but no labGroup is specified, default to 'ALL'
-    if (classType === 'P' && (!labGroup || !['A', 'B', 'ALL'].includes(labGroup))) {
+    if (classType === 'P' && (!labGroup || !['A', 'B', 'C', 'D', 'ALL'].includes(labGroup))) {
       console.log('⚠️ Lab class detected in spanned assignment but labGroup not specified - defaulting to ALL');
       labGroup = 'ALL'; // Default to ALL if not specified for backward compatibility
     }
