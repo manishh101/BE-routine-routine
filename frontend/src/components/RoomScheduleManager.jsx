@@ -699,7 +699,7 @@ const RoomScheduleManagerContent = () => {
                   </Text>
                   
                   <Select
-                    placeholder="Select a room to view its schedule"
+                    placeholder="Search and select a room to view its schedule"
                     style={{ width: '100%' }}
                     value={selectedRoomId}
                     onChange={handleRoomChange}
@@ -707,9 +707,20 @@ const RoomScheduleManagerContent = () => {
                     size="large"
                     showSearch
                     optionFilterProp="label"
-                    filterOption={(input, option) => 
-                      (option?.label || '').toLowerCase().includes(input.toLowerCase())
-                    }
+                    filterOption={(input, option) => {
+                      const room = rooms.find(r => r._id === option.value);
+                      if (!room) return false;
+                      
+                      const searchText = input.toLowerCase();
+                      const roomName = (room.name || '').toLowerCase();
+                      const building = (room.building || '').toLowerCase();
+                      const roomType = room.isLab ? 'lab' : 'classroom';
+                      
+                      return roomName.includes(searchText) ||
+                             building.includes(searchText) ||
+                             roomType.includes(searchText) ||
+                             (room.capacity && room.capacity.toString().includes(searchText));
+                    }}
                     options={rooms.map(room => ({
                       value: room._id,
                       label: `${room.name}${room.capacity ? ` (${room.capacity} seats)` : ''}${room.building ? ` - ${room.building}` : ''}${room.isLab ? ' [Lab]' : ''}`,

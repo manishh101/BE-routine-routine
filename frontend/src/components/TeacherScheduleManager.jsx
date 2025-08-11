@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Select, Space, Typography, Alert, Spin, Button, Row, Col, Statistic, Tag, message } from 'antd';
-import { UserOutlined, ReloadOutlined, BookOutlined, CalendarOutlined, ClockCircleOutlined, TeamOutlined, DownloadOutlined, BugOutlined } from '@ant-design/icons';
+import { UserOutlined, ReloadOutlined, BookOutlined, CalendarOutlined, ClockCircleOutlined, TeamOutlined, DownloadOutlined, BugOutlined, ExperimentOutlined, ReadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { teachersAPI, timeSlotsAPI, routinesAPI } from '../services/api';
 import RoutineGrid from './RoutineGrid';
@@ -319,15 +319,49 @@ const TeacherScheduleManagerContent = () => {
   const scheduleStats = React.useMemo(() => {
     // Use filtered stats if filtering is applied
     if (isFiltered) {
-      return filteredStats;
+      // We need to calculate theory and practical from filtered data
+      let filteredTheoryClasses = 0;
+      let filteredPracticalClasses = 0;
+      
+      // If we have access to filtered routine data, calculate the breakdown
+      if (filteredRoutine?.routine) {
+        Object.entries(filteredRoutine.routine).forEach(([dayIndex, daySlots]) => {
+          if (daySlots && typeof daySlots === 'object') {
+            Object.entries(daySlots).forEach(([slotIndex, classInfo]) => {
+              if (classInfo && typeof classInfo === 'object') {
+                if (classInfo.classType === 'P') {
+                  filteredPracticalClasses++;
+                } else {
+                  filteredTheoryClasses++;
+                }
+              }
+            });
+          }
+        });
+      }
+      
+      return {
+        ...filteredStats,
+        theoryClasses: filteredTheoryClasses,
+        practicalClasses: filteredPracticalClasses
+      };
     }
 
-    if (!displayRoutine?.routine) return { totalClasses: 0, uniqueSubjects: 0, busyDays: 0, totalHours: 0 };
+    if (!displayRoutine?.routine) return { 
+      totalClasses: 0, 
+      uniqueSubjects: 0, 
+      busyDays: 0, 
+      totalHours: 0,
+      theoryClasses: 0,
+      practicalClasses: 0
+    };
 
     // Log for debugging
     console.log('Calculating stats for routine data:', displayRoutine.routine);
     
     let totalClasses = 0;
+    let theoryClasses = 0;
+    let practicalClasses = 0;
     const uniqueSubjects = new Set();
     const busyDays = new Set();
     let totalHours = 0;
@@ -349,6 +383,13 @@ const TeacherScheduleManagerContent = () => {
                 totalClasses++;
                 totalHours += 1; // Assuming each slot is 1 hour
                 
+                // Count theory and practical classes based on classType
+                if (classInfo.classType === 'P') { // Practical
+                  practicalClasses++;
+                } else { // All non-practical classes (L, T, or any other type) are theory
+                  theoryClasses++;
+                }
+                
                 // Extract subject name safely
                 if (classInfo.subjectName) {
                   uniqueSubjects.add(classInfo.subjectName);
@@ -366,6 +407,8 @@ const TeacherScheduleManagerContent = () => {
 
     return {
       totalClasses,
+      theoryClasses,
+      practicalClasses,
       uniqueSubjects: uniqueSubjects.size,
       busyDays: busyDays.size,
       totalHours
@@ -447,9 +490,19 @@ const TeacherScheduleManagerContent = () => {
                     value={selectedTeacher}
                     showSearch
                     optionFilterProp="children"
-                    filterOption={(input, option) =>
-                      option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                    }
+                    filterOption={(input, option) => {
+                      const teacher = teachers.find(t => t._id === option.value);
+                      if (!teacher) return false;
+                      
+                      const searchText = input.toLowerCase();
+                      const fullName = (teacher.fullName || teacher.name || '').toLowerCase();
+                      const department = (teacher.department || '').toLowerCase();
+                      const designation = (teacher.designation || '').toLowerCase();
+                      
+                      return fullName.includes(searchText) ||
+                             department.includes(searchText) ||
+                             designation.includes(searchText);
+                    }}
                     size="large"
                     disabled={isUsingDemoData}
                     styles={{
@@ -638,7 +691,7 @@ const TeacherScheduleManagerContent = () => {
               
               <Col xs={24} lg={12}>
                 <Row gutter={[16, 16]}>
-                  <Col span={12}>
+                  <Col span={8}>
                     <Card
                       size="small"
                       style={{
@@ -656,7 +709,43 @@ const TeacherScheduleManagerContent = () => {
                       />
                     </Card>
                   </Col>
-                  <Col span={12}>
+                  <Col span={8}>
+                    <Card
+                      size="small"
+                      style={{
+                        background: 'linear-gradient(135deg, #1890ff20 0%, #40a9ff20 100%)',
+                        border: 'none',
+                        borderRadius: '12px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <Statistic
+                        title="Theory Classes"
+                        value={scheduleStats.theoryClasses}
+                        prefix={<ReadOutlined style={{ color: '#1890ff' }} />}
+                        valueStyle={{ color: '#1890ff', fontWeight: '600' }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={8}>
+                    <Card
+                      size="small"
+                      style={{
+                        background: 'linear-gradient(135deg, #13c2c220 0%, #36cfc920 100%)',
+                        border: 'none',
+                        borderRadius: '12px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <Statistic
+                        title="Practical Classes"
+                        value={scheduleStats.practicalClasses}
+                        prefix={<ExperimentOutlined style={{ color: '#13c2c2' }} />}
+                        valueStyle={{ color: '#13c2c2', fontWeight: '600' }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={8}>
                     <Card
                       size="small"
                       style={{
@@ -674,7 +763,7 @@ const TeacherScheduleManagerContent = () => {
                       />
                     </Card>
                   </Col>
-                  <Col span={12}>
+                  <Col span={8}>
                     <Card
                       size="small"
                       style={{
@@ -693,7 +782,7 @@ const TeacherScheduleManagerContent = () => {
                       />
                     </Card>
                   </Col>
-                  <Col span={12}>
+                  <Col span={8}>
                     <Card
                       size="small"
                       style={{
