@@ -334,19 +334,13 @@ class TeacherPDFGenerator extends PDFGenerationService {
   }
 
   /**
-   * Add teacher-specific footer to PDF
+   * Add teacher-specific footer to PDF (removed to save space for routine grid)
    * @param {PDFDocument} doc - PDF document
    * @param {Object} teacher - Teacher information
    */
   addTeacherFooter(doc, teacher) {
-    const footerY = doc.page.height - 30;
-    
-    doc.fontSize(8)
-       .font('Helvetica')
-       .fillColor(this.colors.lightText)
-       .text(`Generated on: ${new Date().toLocaleDateString()}`, doc.options.margins.left, footerY)
-       .text(`Teacher: ${teacher.fullName} (${teacher.shortName || teacher._id})`, doc.options.margins.left, footerY + 10)
-       .text('IOE Pulchowk Campus - Teacher Schedule Management System', doc.options.margins.left, footerY + 20);
+    // Footer removed to give more space to the routine grid
+    // Previously contained: Generated on date and teacher info
   }
 }
 

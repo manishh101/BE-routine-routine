@@ -900,17 +900,13 @@ const Teachers = () => {
         >
           <Checkbox.Group style={{ width: '100%' }}>
             <Row>
-              <Col span={8}><Checkbox value={0}>Sunday</Checkbox></Col>
-              <Col span={8}><Checkbox value={1}>Monday</Checkbox></Col>
-              <Col span={8}><Checkbox value={2}>Tuesday</Checkbox></Col>
-            </Row>
-            <Row style={{ marginTop: 8 }}>
-              <Col span={8}><Checkbox value={3}>Wednesday</Checkbox></Col>
-              <Col span={8}><Checkbox value={4}>Thursday</Checkbox></Col>
-              <Col span={8}><Checkbox value={5}>Friday</Checkbox></Col>
-            </Row>
-            <Row style={{ marginTop: 8 }}>
-              <Col span={8}><Checkbox value={6}>Saturday</Checkbox></Col>
+              <Col span={8}><Checkbox value={0}>Sun</Checkbox></Col>
+              <Col span={8}><Checkbox value={1}>Mon</Checkbox></Col>
+              <Col span={8}><Checkbox value={2}>Tue</Checkbox></Col>
+              <Col span={8}><Checkbox value={3}>Wed</Checkbox></Col>
+              <Col span={8}><Checkbox value={4}>Thu</Checkbox></Col>
+              <Col span={8}><Checkbox value={5}>Fri</Checkbox></Col>
+              <Col span={8}><Checkbox value={6}>Sat</Checkbox></Col>
             </Row>
           </Checkbox.Group>
         </Form.Item>

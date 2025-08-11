@@ -94,6 +94,9 @@ const AssignClassModal = ({
   const [electiveNumber, setElectiveNumber] = useState(1);
   const [electiveType, setElectiveType] = useState('TECHNICAL');
   
+  // Lab group management - same configuration for both groups option
+  const [useSameConfigForBothGroups, setUseSameConfigForBothGroups] = useState(false);
+  
   // Ref to track if teachers have been initialized to prevent infinite loops
   const teachersInitializedRef = useRef(false);
   const [targetSections, setTargetSections] = useState(['AB', 'CD']);
@@ -502,6 +505,21 @@ const AssignClassModal = ({
             setGroupBSubject(existingClass.groupBSubject || null);
             setGroupARoom(existingClass.groupARoom || null);
             setGroupBRoom(existingClass.groupBRoom || null);
+            
+            // Check if same configuration was used for both groups
+            const isSameSubject = existingClass.groupASubject && 
+                                  existingClass.groupBSubject && 
+                                  existingClass.groupASubject === existingClass.groupBSubject;
+            const isSameTeachers = existingClass.groupATeachers && 
+                                   existingClass.groupBTeachers &&
+                                   JSON.stringify(existingClass.groupATeachers.sort()) === JSON.stringify(existingClass.groupBTeachers.sort());
+            const isSameRoom = existingClass.groupARoom && 
+                               existingClass.groupBRoom && 
+                               existingClass.groupARoom === existingClass.groupBRoom;
+            
+            const isSameConfig = isSameSubject && isSameTeachers && isSameRoom;
+            setUseSameConfigForBothGroups(isSameConfig);
+            
             form.setFieldsValue({
               groupATeachers: existingClass.groupATeachers || [],
               groupBTeachers: existingClass.groupBTeachers || [],
@@ -509,7 +527,13 @@ const AssignClassModal = ({
               groupBSubject: existingClass.groupBSubject || undefined,
               groupARoom: existingClass.groupARoom || undefined,
               groupBRoom: existingClass.groupBRoom || undefined,
-              isAlternativeWeek: existingClass.isAlternativeWeek || false
+              isAlternativeWeek: existingClass.isAlternativeWeek || false,
+              // If same config is detected, also populate standard fields
+              ...(isSameConfig && {
+                subjectId: existingClass.groupASubject,
+                teacherIds: existingClass.groupATeachers,
+                roomId: existingClass.groupARoom
+              })
             });
           } else {
             form.setFieldsValue({
@@ -531,6 +555,7 @@ const AssignClassModal = ({
       setGroupBSubject(null);
       setGroupARoom(null);
       setGroupBRoom(null);
+      setUseSameConfigForBothGroups(false);
       setIsMultiPeriod(false);
       setSelectedSlots([slotIndex]);
       
@@ -664,12 +689,20 @@ const AssignClassModal = ({
     if (values.classType === 'P' && !values.labGroupType) errors.push('Lab group type is required for practical classes');
 
     if (values.classType === 'P' && values.labGroupType === 'bothGroups') {
-      if (!values.groupASubject) errors.push('Group A subject is required');
-      if (!values.groupBSubject) errors.push('Group B subject is required');
-      if (!values.groupATeachers?.length) errors.push('At least one teacher must be selected for Group A');
-      if (!values.groupBTeachers?.length) errors.push('At least one teacher must be selected for Group B');
-      if (!values.groupARoom) errors.push('Room is required for Group A');
-      if (!values.groupBRoom) errors.push('Room is required for Group B');
+      if (useSameConfigForBothGroups) {
+        // When using same config, only check Group A fields and use them for both
+        if (!values.groupASubject) errors.push('Subject is required for lab class');
+        if (!values.groupATeachers?.length) errors.push('At least one teacher must be selected');
+        if (!values.groupARoom) errors.push('Room is required');
+      } else {
+        // When using different configs, check both groups
+        if (!values.groupASubject) errors.push('Group A subject is required');
+        if (!values.groupBSubject) errors.push('Group B subject is required');
+        if (!values.groupATeachers?.length) errors.push('At least one teacher must be selected for Group A');
+        if (!values.groupBTeachers?.length) errors.push('At least one teacher must be selected for Group B');
+        if (!values.groupARoom) errors.push('Room is required for Group A');
+        if (!values.groupBRoom) errors.push('Room is required for Group B');
+      }
     } else {
       // Handle validation for multiple subjects in electives
       if (isElectiveClass && selectedSubjects.length > 0) {
@@ -765,11 +798,41 @@ const AssignClassModal = ({
       setIsAlternativeWeek(changedValues.isAlternativeWeek);
     }
 
-    if (changedValues.groupATeachers !== undefined) setGroupATeachers(changedValues.groupATeachers);
+    if (changedValues.groupATeachers !== undefined) {
+      setGroupATeachers(changedValues.groupATeachers);
+      // If same config is enabled, automatically update Group B teachers and standard field
+      if (useSameConfigForBothGroups) {
+        form.setFieldsValue({ 
+          groupBTeachers: changedValues.groupATeachers,
+          teacherIds: changedValues.groupATeachers // Also update standard field
+        });
+        setGroupBTeachers(changedValues.groupATeachers);
+      }
+    }
     if (changedValues.groupBTeachers !== undefined) setGroupBTeachers(changedValues.groupBTeachers);
-    if (changedValues.groupASubject !== undefined) setGroupASubject(changedValues.groupASubject);
+    if (changedValues.groupASubject !== undefined) {
+      setGroupASubject(changedValues.groupASubject);
+      // If same config is enabled, automatically update Group B subject and standard field
+      if (useSameConfigForBothGroups) {
+        form.setFieldsValue({ 
+          groupBSubject: changedValues.groupASubject,
+          subjectId: changedValues.groupASubject // Also update standard field
+        });
+        setGroupBSubject(changedValues.groupASubject);
+      }
+    }
     if (changedValues.groupBSubject !== undefined) setGroupBSubject(changedValues.groupBSubject);
-    if (changedValues.groupARoom !== undefined) setGroupARoom(changedValues.groupARoom);
+    if (changedValues.groupARoom !== undefined) {
+      setGroupARoom(changedValues.groupARoom);
+      // If same config is enabled, automatically update Group B room and standard field
+      if (useSameConfigForBothGroups) {
+        form.setFieldsValue({ 
+          groupBRoom: changedValues.groupARoom,
+          roomId: changedValues.groupARoom // Also update standard field
+        });
+        setGroupBRoom(changedValues.groupARoom);
+      }
+    }
     if (changedValues.groupBRoom !== undefined) setGroupBRoom(changedValues.groupBRoom);
     
     const timeoutId = setTimeout(() => {
@@ -970,10 +1033,22 @@ const AssignClassModal = ({
         
         console.log('🚀 Lab class data being sent:', labClassData);
         if (labGroupType === 'bothGroups') {
-          labClassData.groupATeachers = groupATeachers; labClassData.groupBTeachers = groupBTeachers;
-          labClassData.groupASubject = groupASubject; labClassData.groupBSubject = groupBSubject;
-          labClassData.groupARoom = groupARoom; labClassData.groupBRoom = groupBRoom;
+          labClassData.groupATeachers = groupATeachers; 
+          labClassData.groupBTeachers = useSameConfigForBothGroups ? groupATeachers : groupBTeachers;
+          labClassData.groupASubject = groupASubject; 
+          // Use same config for Group B if the option is enabled
+          labClassData.groupBSubject = useSameConfigForBothGroups ? groupASubject : groupBSubject;
+          labClassData.groupARoom = groupARoom; 
+          labClassData.groupBRoom = useSameConfigForBothGroups ? groupARoom : groupBRoom;
           labClassData.isAlternativeWeek = isAlternativeWeek;
+          labClassData.useSameConfigForBothGroups = useSameConfigForBothGroups;
+          
+          // For backend validation, also set the standard fields when using same config
+          if (useSameConfigForBothGroups) {
+            labClassData.subjectId = groupASubject;
+            labClassData.teacherIds = groupATeachers;
+            labClassData.roomId = groupARoom;
+          }
         } else {
           labClassData.isAlternativeWeek = isAlternativeWeek;
         }
@@ -1268,12 +1343,85 @@ const AssignClassModal = ({
           
           {currentClassType === 'P' && labGroupType === 'bothGroups' && (
             <>
+              {/* Hidden fields for backend validation when using same configuration */}
+              <Form.Item name="subjectId" style={{ display: 'none' }}>
+                <Input type="hidden" />
+              </Form.Item>
+              <Form.Item name="teacherIds" style={{ display: 'none' }}>
+                <Input type="hidden" />
+              </Form.Item>
+              <Form.Item name="roomId" style={{ display: 'none' }}>
+                <Input type="hidden" />
+              </Form.Item>
+              
+              <Form.Item style={{ marginBottom: '12px' }}>
+                <Checkbox 
+                  checked={useSameConfigForBothGroups} 
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setUseSameConfigForBothGroups(checked);
+                    if (checked) {
+                      // When enabling same config, copy Group A values to Group B
+                      const groupASubjectValue = form.getFieldValue('groupASubject');
+                      const groupATeachersValue = form.getFieldValue('groupATeachers');
+                      const groupARoomValue = form.getFieldValue('groupARoom');
+                      
+                      if (groupASubjectValue) {
+                        form.setFieldsValue({ 
+                          groupBSubject: groupASubjectValue,
+                          subjectId: groupASubjectValue // Also set standard field for backend validation
+                        });
+                        setGroupBSubject(groupASubjectValue);
+                      }
+                      if (groupATeachersValue) {
+                        form.setFieldsValue({ 
+                          groupBTeachers: groupATeachersValue,
+                          teacherIds: groupATeachersValue // Also set standard field for backend validation
+                        });
+                        setGroupBTeachers(groupATeachersValue);
+                      }
+                      if (groupARoomValue) {
+                        form.setFieldsValue({ 
+                          groupBRoom: groupARoomValue,
+                          roomId: groupARoomValue // Also set standard field for backend validation
+                        });
+                        setGroupBRoom(groupARoomValue);
+                      }
+                    }
+                  }}
+                >
+                  <Text strong>Use same subject, teachers, and room for both groups</Text>
+                </Checkbox>
+                {useSameConfigForBothGroups && (
+                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#666' }}>
+                    <Text type="secondary">
+                      Both groups will use identical lab configuration. Perfect for alternating lab sessions 
+                      where the same instructors and equipment serve both groups on different weeks.
+                    </Text>
+                  </div>
+                )}
+              </Form.Item>
+              
               <Divider>{isAlternativeWeek ? `${getSectionLabGroups().groupA} (Alt Week)` : getSectionLabGroups().groupA}</Divider>
               {/* Group A fields... */}
               <Row gutter={16}>
-                <Col span={8}><Form.Item name="groupASubject" label="Subject" rules={[{ required: true }]}><Select placeholder="Select subject" loading={subjectsLoading} showSearch>{subjects.map(s => <Option key={`ga-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}</Select></Form.Item></Col>
                 <Col span={8}>
-                  <Form.Item name="groupATeachers" label="Teacher(s)" rules={[{ required: true }]}>
+                  <Form.Item 
+                    name="groupASubject" 
+                    label={useSameConfigForBothGroups ? "Subject (For Both Groups)" : "Subject"} 
+                    rules={[{ required: true }]}
+                  >
+                    <Select placeholder="Select subject" loading={subjectsLoading} showSearch>
+                      {subjects.map(s => <Option key={`ga-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item 
+                    name="groupATeachers" 
+                    label={useSameConfigForBothGroups ? "Teacher(s) (For Both Groups)" : "Teacher(s)"} 
+                    rules={[{ required: true }]}
+                  >
                     <Select 
                       mode="multiple" 
                       placeholder="Search and select teachers..." 
@@ -1287,6 +1435,7 @@ const AssignClassModal = ({
                                teacher.shortName?.toLowerCase().includes(searchTerm);
                       }}
                     >
+                      {/* ...existing teacher options... */}
                       {filteredTeachers.map(t => (
                         <Option key={`ga-${t._id}`} value={t._id}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -1321,7 +1470,11 @@ const AssignClassModal = ({
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="groupARoom" label="Room" rules={[{ required: true }]}>
+                  <Form.Item 
+                    name="groupARoom" 
+                    label={useSameConfigForBothGroups ? "Room (For Both Groups)" : "Room"} 
+                    rules={[{ required: true }]}
+                  >
                     <Select 
                       placeholder="Search and select room..." 
                       loading={roomsLoading} 
@@ -1334,6 +1487,7 @@ const AssignClassModal = ({
                                room.code?.toLowerCase().includes(searchTerm);
                       }}
                     >
+                      {/* ...existing room options... */}
                       {rooms.map(r => (
                         <Option key={`ga-${r._id}`} value={r._id}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -1370,14 +1524,34 @@ const AssignClassModal = ({
               <Divider>{isAlternativeWeek ? `${getSectionLabGroups().groupB} (Alt Week)` : getSectionLabGroups().groupB}</Divider>
               {/* Group B fields... */}
                <Row gutter={16}>
-                <Col span={8}><Form.Item name="groupBSubject" label="Subject" rules={[{ required: true }]}><Select placeholder="Select subject" loading={subjectsLoading} showSearch>{subjects.map(s => <Option key={`gb-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}</Select></Form.Item></Col>
                 <Col span={8}>
-                  <Form.Item name="groupBTeachers" label="Teacher(s)" rules={[{ required: true }]}>
+                  <Form.Item 
+                    name="groupBSubject" 
+                    label={useSameConfigForBothGroups ? "Subject (Same as Group A)" : "Subject"} 
+                    rules={[{ required: !useSameConfigForBothGroups }]}
+                  >
+                    <Select 
+                      placeholder={useSameConfigForBothGroups ? "Same subject as Group A" : "Select subject"} 
+                      loading={subjectsLoading} 
+                      showSearch
+                      disabled={useSameConfigForBothGroups}
+                    >
+                      {subjects.map(s => <Option key={`gb-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}
+                    </Select>
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item 
+                    name="groupBTeachers" 
+                    label={useSameConfigForBothGroups ? "Teacher(s) (Same as Group A)" : "Teacher(s)"} 
+                    rules={[{ required: !useSameConfigForBothGroups }]}
+                  >
                     <Select 
                       mode="multiple" 
-                      placeholder="Search and select teachers..." 
+                      placeholder={useSameConfigForBothGroups ? "Same teachers as Group A" : "Search and select teachers..."} 
                       loading={teachersLoading} 
                       showSearch
+                      disabled={useSameConfigForBothGroups}
                       filterOption={(input, option) => {
                         const teacher = filteredTeachers.find(t => t._id === option.value);
                         if (!teacher) return false;
@@ -1386,6 +1560,7 @@ const AssignClassModal = ({
                                teacher.shortName?.toLowerCase().includes(searchTerm);
                       }}
                     >
+                      {/* ...existing teacher options... */}
                       {filteredTeachers.map(t => (
                         <Option key={`gb-${t._id}`} value={t._id}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -1420,11 +1595,16 @@ const AssignClassModal = ({
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="groupBRoom" label="Room" rules={[{ required: true }]}>
+                  <Form.Item 
+                    name="groupBRoom" 
+                    label={useSameConfigForBothGroups ? "Room (Same as Group A)" : "Room"} 
+                    rules={[{ required: !useSameConfigForBothGroups }]}
+                  >
                     <Select 
-                      placeholder="Search and select room..." 
+                      placeholder={useSameConfigForBothGroups ? "Same room as Group A" : "Search and select room..."} 
                       loading={roomsLoading} 
                       showSearch
+                      disabled={useSameConfigForBothGroups}
                       filterOption={(input, option) => {
                         const room = rooms.find(r => r._id === option.value);
                         if (!room) return false;
@@ -1433,6 +1613,7 @@ const AssignClassModal = ({
                                room.code?.toLowerCase().includes(searchTerm);
                       }}
                     >
+                      {/* ...existing room options... */}
                       {rooms.map(r => (
                         <Option key={`gb-${r._id}`} value={r._id}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -1466,6 +1647,16 @@ const AssignClassModal = ({
                   </Form.Item>
                 </Col>
               </Row>
+              
+              {useSameConfigForBothGroups && (
+                <Alert 
+                  message="Same Configuration for Both Groups" 
+                  description={`Both ${getSectionLabGroups().groupA} and ${getSectionLabGroups().groupB} will use identical lab configuration (same subject, teachers, and room). Perfect for alternating lab sessions where groups share all resources.`}
+                  type="info" 
+                  showIcon 
+                  style={{ marginTop: '12px' }}
+                />
+              )}
             </>
           )}
 

@@ -323,14 +323,8 @@ class RoomPDFGenerator extends PDFGenerationService {
    * @param {Object} room - Room information
    */
   addRoomFooter(doc, room) {
-    const footerY = doc.page.height - 30;
-    
-    doc.fontSize(8)
-       .font('Helvetica')
-       .fillColor(this.colors.lightText)
-       .text(`Generated on: ${new Date().toLocaleDateString()}`, doc.options.margins.left, footerY)
-       .text(`Room: ${room.name}${room.building ? ` (${room.building})` : ''}`, doc.options.margins.left, footerY + 10)
-       .text('IOE Pulchowk Campus - Room Utilization Management System', doc.options.margins.left, footerY + 20);
+    // Footer removed to give more space to the routine grid
+    // Previously contained: Generated on date and room info
   }
 }
 

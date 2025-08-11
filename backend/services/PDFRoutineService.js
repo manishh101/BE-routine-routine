@@ -716,9 +716,7 @@ class PDFRoutineService {
       doc.fontSize(programFontSize).font('Helvetica-Bold')
          .text(`${programCode} - ${programName || 'Program'}`, { align: 'center' });
       
-      const semesterFontSize = 6;
-      doc.fontSize(semesterFontSize).font('Helvetica')
-         .text(`Semester ${semester} | Section ${section}`, { align: 'center' });
+      // Removed semester and section info to save space for the routine grid
     }
 
     if (subtitle) {
@@ -734,27 +732,8 @@ class PDFRoutineService {
    * Generate PDF footer
    */
   _generatePDFFooter(doc, scheduleType) {
-    const bottomMargin = 50;
-    const pageHeight = doc.page.height;
-    
-    doc.y = pageHeight - bottomMargin;
-    
-    // Add line separator
-    doc.strokeColor('#000000')
-       .lineWidth(0.5)
-       .moveTo(doc.page.margins.left, doc.y)
-       .lineTo(doc.page.width - doc.page.margins.right, doc.y)
-       .stroke();
-    
-    doc.moveDown(0.3);
-    
-    // Footer text
-    doc.fontSize(8).font('Helvetica')
-       .text(`Generated on: ${new Date().toLocaleDateString()} | ${scheduleType}`, 
-             doc.page.margins.left, doc.y, { 
-               width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
-               align: 'center' 
-             });
+    // Footer removed to give more space to the routine grid
+    // Previously contained: Generated on date and schedule type info
   }
 
   /**
@@ -906,7 +885,7 @@ class PDFRoutineService {
     const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const dayColumnWidth = 100; // Increased from 90 to 100 for day names in landscape
     const timeColumnWidth = (totalWidth - dayColumnWidth) / timeSlots.length;
-    const rowHeight = 85; // Increased from 65 to 85 for better text accommodation in landscape
+    const rowHeight = 100; // Increased from 85 to 100 to use space freed by removing footer and header lines
 
     // Create routine lookup map using timeSlot._id (matching frontend exactly)
     const routineMap = new Map();
@@ -1017,7 +996,7 @@ class PDFRoutineService {
     const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const dayColumnWidth = 100; // Increased from 90 to 100 for day names in landscape
     const timeColumnWidth = (totalWidth - dayColumnWidth) / timeSlots.length;
-    const rowHeight = 85; // Increased from 65 to 85 for better text accommodation in landscape
+    const rowHeight = 100; // Increased from 85 to 100 to use space freed by removing footer and header lines
 
     // Create routine lookup map using timeSlot._id (matching frontend exactly)
     const routineMap = new Map();
@@ -1138,7 +1117,7 @@ class PDFRoutineService {
     const availableWidth = totalWidth;
     const timeColumnWidth = (availableWidth - dayColumnWidth) / timeSlots.length;
     const headerRowHeight = 20; // Even smaller header for A4
-    const rowHeight = 50; // Even smaller rows for A4
+    const rowHeight = 60; // Increased from 50 to 60 to use space freed by removing footer and header lines
 
     // Step 1: Create routine lookup map and detect spanning classes
     const routineMap = new Map();

@@ -604,8 +604,8 @@ const exportAllRoomSchedulesToPDF = async (req, res) => {
     doc.fontSize(16)
        .font('Helvetica')
        .text('IOE Pulchowk Campus', 50, 250, { align: 'center' })
-       .text(`Academic Year: ${currentAcademicYear.year}`, 50, 280, { align: 'center' })
-       .text(`Generated on: ${new Date().toLocaleDateString()}`, 50, 310, { align: 'center' });
+       .text(`Academic Year: ${currentAcademicYear.year}`, 50, 280, { align: 'center' });
+       // Removed "Generated on" line to save space for routine grid
 
     // Process each room
     for (let i = 0; i < rooms.length; i++) {

@@ -93,13 +93,8 @@ class PDFGenerationService {
    * @param {PDFDocument} doc - PDF document
    */
   addFooter(doc) {
-    const footerY = doc.page.height - 30;
-    
-    doc.fontSize(8)
-       .font('Helvetica')
-       .fillColor(this.colors.lightText)
-       .text(`Generated on: ${new Date().toLocaleDateString()}`, doc.options.margins.left, footerY)
-       .text('IOE Pulchowk Campus - Routine Management System', doc.options.margins.left, footerY + 12);
+    // Footer removed to give more space to the routine grid
+    // Previously contained: Generated on date and system info
   }
 
   /**
