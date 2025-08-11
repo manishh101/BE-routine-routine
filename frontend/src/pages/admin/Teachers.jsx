@@ -20,7 +20,8 @@ import {
   Popconfirm,
   Divider,
   Tooltip,
-  Alert
+  Alert,
+  Checkbox
 } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -425,7 +426,8 @@ const Teachers = () => {
       phoneNumber: teacher.phoneNumber,
       isActive: teacher.isActive,
       isFullTime: teacher.isFullTime,
-      maxWeeklyHours: teacher.maxWeeklyHours
+      maxWeeklyHours: teacher.maxWeeklyHours,
+      availableDays: teacher.availableDays || [0, 1, 2, 3, 4, 5, 6] // Default to all days if not set
     });
     setEditModalVisible(true);
   };
@@ -441,7 +443,8 @@ const Teachers = () => {
     form.setFieldsValue({
       isActive: true,
       isFullTime: true,
-      maxWeeklyHours: 40
+      maxWeeklyHours: 16,
+      availableDays: [0, 1, 2, 3, 4, 5, 6] // Default: all days available
     });
     setEditModalVisible(true);
   };
@@ -889,6 +892,28 @@ const Teachers = () => {
             </Form.Item>
           </Col>
         </Row>
+
+        <Form.Item
+          name="availableDays"
+          label="Available Days"
+          rules={[{ required: true, message: 'Please select at least one available day' }]}
+        >
+          <Checkbox.Group style={{ width: '100%' }}>
+            <Row>
+              <Col span={8}><Checkbox value={0}>Sunday</Checkbox></Col>
+              <Col span={8}><Checkbox value={1}>Monday</Checkbox></Col>
+              <Col span={8}><Checkbox value={2}>Tuesday</Checkbox></Col>
+            </Row>
+            <Row style={{ marginTop: 8 }}>
+              <Col span={8}><Checkbox value={3}>Wednesday</Checkbox></Col>
+              <Col span={8}><Checkbox value={4}>Thursday</Checkbox></Col>
+              <Col span={8}><Checkbox value={5}>Friday</Checkbox></Col>
+            </Row>
+            <Row style={{ marginTop: 8 }}>
+              <Col span={8}><Checkbox value={6}>Saturday</Checkbox></Col>
+            </Row>
+          </Checkbox.Group>
+        </Form.Item>
       </Form>
     </Modal>
     </Space>

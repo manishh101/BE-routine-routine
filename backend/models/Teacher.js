@@ -94,12 +94,16 @@ const TeacherSchema = new mongoose.Schema(
       min: 0,
       max: 24
     },
-    availableDays: [{
-      type: Number,
-      min: 0,
-      max: 6
-      // [0,1,2,3,4,5] for Sun-Fri
-    }],
+    availableDays: {
+      type: [Number],
+      default: [0, 1, 2, 3, 4, 5, 6], // Default: available all days (Sunday to Saturday)
+      validate: {
+        validator: function(days) {
+          return days.every(day => day >= 0 && day <= 6);
+        },
+        message: 'Available days must be between 0 (Sunday) and 6 (Saturday)'
+      }
+    },
     
     // Availability Overrides
     unavailableSlots: [{
