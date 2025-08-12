@@ -133,8 +133,8 @@ class UnifiedPDFService {
     // Step 1: Detect spanning classes
     const spanningClasses = this._detectSpanningClasses(routineSlots, timeSlots, days);
 
-    // Step 2: Draw header row
-    doc.fontSize(4).font('Helvetica-Bold');
+    // Step 2: Draw header row with consistent 8.5pt font size
+    doc.fontSize(8.5).font('Helvetica-Bold'); // Same size as content
     this._drawCell(doc, startX, startY, dayColumnWidth, headerRowHeight, '', '#f0f0f0', true);
     
     timeSlots.forEach((timeSlot, index) => {
@@ -147,8 +147,8 @@ class UnifiedPDFService {
     days.forEach((day, dayIndex) => {
       const y = startY + headerRowHeight + (dayIndex * rowHeight);
       
-      // Day name cell
-      doc.fontSize(5).font('Helvetica-Bold');
+      // Day name cell with consistent 8.5pt font size
+      doc.fontSize(8.5).font('Helvetica-Bold'); // Same size as content
       this._drawCell(doc, startX, y, dayColumnWidth, rowHeight, day, '#f8f8f8', true);
       
       // Time slot cells for this day
@@ -698,25 +698,53 @@ class UnifiedPDFService {
       labGroupIndicator = ` (${slot.labGroup})`;
     }
     
-    // Enhanced text wrapping for long subject names (from OLD service)
+    // ENHANCED: Intelligent text wrapping for better readability with larger fonts
     let wrappedSubjectName = subjectName;
-    const maxLineLength = 24; // Approximate character limit per line for current cell width
+    const maxLineLength = 20; // Adjusted for larger font sizes
     const fullSubjectText = subjectName + labGroupIndicator;
     
     if (fullSubjectText.length > maxLineLength) {
       const words = subjectName.split(' ');
       if (words.length >= 2) {
-        // Split into two lines, trying to balance the length
-        const midPoint = Math.ceil(words.length / 2);
-        const firstLine = words.slice(0, midPoint).join(' ');
-        const secondLine = words.slice(midPoint).join(' ');
-        wrappedSubjectName = `${firstLine}\n${secondLine}`;
+        // ENHANCED: Smart line breaking for multi-word subjects
+        if (words.length === 2) {
+          // Two words - put each on separate line
+          wrappedSubjectName = words.join('\n');
+        } else if (words.length === 3) {
+          // Three words - try 2+1 or 1+2 split based on length
+          const option1 = `${words[0]} ${words[1]}\n${words[2]}`;
+          const option2 = `${words[0]}\n${words[1]} ${words[2]}`;
+          const option1MaxLine = Math.max(words[0].length + words[1].length + 1, words[2].length);
+          const option2MaxLine = Math.max(words[0].length, words[1].length + words[2].length + 1);
+          wrappedSubjectName = option1MaxLine <= option2MaxLine ? option1 : option2;
+        } else {
+          // Four or more words - split roughly in half
+          const midPoint = Math.ceil(words.length / 2);
+          const firstLine = words.slice(0, midPoint).join(' ');
+          const secondLine = words.slice(midPoint).join(' ');
+          wrappedSubjectName = `${firstLine}\n${secondLine}`;
+        }
       } else if (subjectName.includes('&')) {
         // Handle subjects with "&" by breaking at that point
         wrappedSubjectName = subjectName.replace(' & ', '\n& ');
       } else if (subjectName.includes('-')) {
         // Handle subjects with "-" by breaking at that point
         wrappedSubjectName = subjectName.replace(' - ', '\n- ');
+      } else if (subjectName.includes(',')) {
+        // Handle subjects with "," by breaking at that point
+        wrappedSubjectName = subjectName.replace(', ', ',\n');
+      } else if (subjectName.length > 25) {
+        // Very long single word - break in middle
+        const midPoint = Math.floor(subjectName.length / 2);
+        // Try to break at a vowel or common letter
+        let breakPoint = midPoint;
+        for (let i = midPoint; i < Math.min(midPoint + 5, subjectName.length - 3); i++) {
+          if ('aeiouAEIOU'.includes(subjectName[i])) {
+            breakPoint = i + 1;
+            break;
+          }
+        }
+        wrappedSubjectName = `${subjectName.substring(0, breakPoint)}\n${subjectName.substring(breakPoint)}`;
       }
     }
     
@@ -758,7 +786,7 @@ class UnifiedPDFService {
 
   /**
    * Draw a cell with content and support for horizontal separators
-   * Enhanced with multi-group separator support from PDFRoutineService_OLD.js
+   * Enhanced with upward text positioning and better readability
    */
   _drawCell(doc, x, y, width, height, text, bgColor = '#ffffff', isHeader = false, isLab = false) {
     // Enhanced: Remove background colors for merged classes
@@ -781,21 +809,20 @@ class UnifiedPDFService {
                               (text && text.includes(' & ')) || // General pattern for joined groups
                               (text && /\(Group [A-D] & Group [A-D]\)/.test(text));
       
-      // Enhanced: Force small font sizes for all content
-      const fontSizeMultiplier = 0.75; // Force 75% reduction for better fit
-      
-      // Dynamic font sizing based on content length - force small fonts
+      // ENHANCED: Eye-friendly font sizing with larger text and smart auto-wrapping
       let fontSize;
+      const textLength = text.length;
+      const lineCount = lines.length;
+      
       if (isHeader) {
-        fontSize = Math.round(10 * fontSizeMultiplier); // Force small headers
-      } else if (isMultiGroupClass) {
-        fontSize = Math.round(8 * fontSizeMultiplier); // Force small multi-group text
-      } else if (isMergedClass || lines.length > 8) {
-        fontSize = Math.round(7 * fontSizeMultiplier); // Force small merged class text
-      } else if (lines.length > 5) {
-        fontSize = Math.round(7 * fontSizeMultiplier); // Much smaller moderately long content
+        fontSize = 8.5; // Same size as content for complete consistency
       } else {
-        fontSize = Math.round(8 * fontSizeMultiplier); // Much smaller standard content
+        // SIMPLIFIED: Single consistent font size for all content types
+        fontSize = 8.5; // Single font size for all slots - consistent and readable
+        
+        // Only apply width scaling for very narrow or very wide cells
+        const widthFactor = Math.max(0.9, Math.min(1.1, width / 80));
+        fontSize = Math.max(4.5, fontSize * widthFactor);
       }
       
       const font = isHeader ? 'Helvetica-Bold' : (isLab ? 'Helvetica-Bold' : 'Helvetica');
@@ -805,82 +832,89 @@ class UnifiedPDFService {
          .font(font)
          .fillColor(textColor);
       
-      const lineHeight = fontSize * (isMergedClass || isMultiGroupClass ? 1.3 : 1.2); // Better line spacing for multi-group content
+      // ENHANCED: More generous line height for better readability
+      const lineHeight = fontSize * (isMergedClass || isMultiGroupClass ? 1.25 : 1.3); // More spacious line spacing
       const totalTextHeight = lines.length * lineHeight;
       
-      // Enhanced: Better vertical positioning for practical classes
+      // ENHANCED: Smart vertical positioning - shift upward when space is limited
       let textStartY;
+      const cellPadding = 4; // Increased padding for better visual breathing room
+      const availableHeight = height - (cellPadding * 2);
       
-      // Check if this is a practical class with Group A/B content or multi-group content
-      const isPracticalClass = isLab || (text && text.includes('| ')) || (text && text.includes('Group A')) || (text && text.includes('Group B'));
-      
-      if (isPracticalClass || isMultiGroupClass) {
-        // For practical/multi-group classes: better vertical centering with proper spacing
-        const cellCenterY = y + (height / 2);
-        const proposedStartY = cellCenterY - (totalTextHeight / 2);
-        
-        // Ensure text starts within cell boundaries with minimal top padding
-        const minTopPadding = 4; // Slightly increased for better spacing
-        const maxBottomY = y + height - 4; // Better bottom margin
-        
-        textStartY = Math.max(proposedStartY, y + minTopPadding);
-        
-        // If content would extend beyond bottom, adjust start position
-        if (textStartY + totalTextHeight > maxBottomY) {
-          textStartY = Math.max(y + minTopPadding, maxBottomY - totalTextHeight);
-        }
+      if (totalTextHeight <= availableHeight) {
+        // Text fits comfortably - center it vertically with slight upward bias
+        const verticalSpace = availableHeight - totalTextHeight;
+        const upwardShift = Math.min(verticalSpace * 0.3, 3); // Shift up by 30% of extra space, max 3pt
+        textStartY = y + cellPadding + (verticalSpace / 2) - upwardShift;
       } else {
-        // For lecture classes: start very close to top for compact cells
-        const cellCenterY = y + (height / 2);
-        const proposedStartY = cellCenterY - (totalTextHeight / 2) + (lineHeight * 0.1); // Minimal offset
+        // Text is too tall - start from top with minimal padding and shift upward if needed
+        const emergencyPadding = Math.max(1, cellPadding / 2); // Reduce padding when space is tight
+        textStartY = y + emergencyPadding;
         
-        // Ensure content stays within cell boundaries with minimal padding
-        const minTopPadding = 2; // Reduced to 2 pixels
-        const maxBottomY = y + height - 2; // Reduced bottom margin to 2px
-        
-        textStartY = Math.max(proposedStartY, y + minTopPadding);
-        if (textStartY + totalTextHeight > maxBottomY) {
-          textStartY = Math.max(y + minTopPadding, maxBottomY - totalTextHeight);
+        // ENHANCED: Intelligent font reduction with upward positioning preference
+        if (totalTextHeight > availableHeight) {
+          const reductionFactor = Math.max(0.75, (availableHeight - 2) / totalTextHeight); // Ensure some margin
+          fontSize *= reductionFactor;
+          doc.fontSize(fontSize);
+          
+          // Recalculate with new font size and position text higher in cell
+          const newLineHeight = fontSize * 1.2; // Tighter line spacing for cramped text
+          const newTotalHeight = lines.length * newLineHeight;
+          
+          // Position text in upper portion of cell for better visibility
+          const upperPortionY = y + Math.max(1, emergencyPadding);
+          textStartY = upperPortionY;
+          
+          // If still too tall, position at very top of cell
+          if (newTotalHeight > height - 2) {
+            textStartY = y + 1;
+          }
         }
       }
       
-      // Enhanced: Draw each line with horizontal centering and border lines for separators
-      let cumulativeY = textStartY;
+      // ENHANCED: Smart text rendering with upward positioning and centering
       lines.forEach((line, index) => {
-        if (line.trim()) {
-          const lineY = cumulativeY;
-          cumulativeY = lineY + lineHeight; // Update for next line
-          
-          // Safety check: ensure line doesn't go beyond cell boundaries
-          if (lineY < y || lineY + fontSize > y + height) {
-            return; // Skip lines that would go outside cell boundaries
+        const lineY = textStartY + (index * lineHeight);
+        
+        // Enhanced boundary checking - allow text closer to edges for better space utilization
+        if (lineY < y - 1 || lineY + fontSize > y + height + 1) {
+          return;
+        }
+        
+        if (line.trim() === '──────') {
+          // Draw separator line
+          const borderY = lineY + (fontSize * 0.4);
+          if (borderY >= y + 1 && borderY <= y + height - 1) {
+            doc.save();
+            doc.strokeColor('#cccccc')
+               .lineWidth(0.5)
+               .moveTo(x + 5, borderY)
+               .lineTo(x + width - 5, borderY)
+               .stroke();
+            doc.restore();
+            doc.fillColor(textColor);
           }
+        } else if (line.trim()) {
+          // ENHANCED: Center text horizontally and ensure proper vertical positioning
+          const textWidth = doc.widthOfString(line);
+          const availableWidth = width - 4; // Leave small margins
           
-          // Enhanced: Special handling for separator lines in merged classes
-          if (line.trim() === '──────') {
-            // Draw actual border line instead of text
-            const borderY = lineY + (fontSize * 0.3); // Adjust vertical position
-            const borderMargin = 10; // Margin from cell edges
+          if (textWidth <= availableWidth) {
+            // Text fits - center it
+            const textX = x + Math.max(2, (width - textWidth) / 2);
+            const adjustedY = Math.max(y + 1, Math.min(lineY, y + height - fontSize - 1));
             
-            // Ensure border line is within cell boundaries
-            if (borderY >= y + 5 && borderY <= y + height - 5) {
-              doc.save();
-              doc.strokeColor('#888888')
-                 .lineWidth(0.8)
-                 .moveTo(x + borderMargin, borderY)
-                 .lineTo(x + width - borderMargin, borderY)
-                 .stroke();
-              doc.restore();
-              
-              // Reset text color after drawing border
-              doc.fillColor(textColor);
-            }
+            doc.text(line, textX, adjustedY);
           } else {
-            // Enhanced: Use PDFKit's built-in text alignment for perfect centering
-            doc.text(line.trim(), x + 6, lineY, { // Better horizontal padding for multi-group content
-              width: width - 12, // 6px padding on each side for better text spacing
+            // Text too wide - center it with clipping
+            const adjustedY = Math.max(y + 1, Math.min(lineY, y + height - fontSize - 1));
+            
+            doc.text(line, x + 2, adjustedY, {
+              width: availableWidth,
+              height: fontSize + 2,
               align: 'center',
-              baseline: 'top'
+              ellipsis: false,
+              lineBreak: false
             });
           }
         }
