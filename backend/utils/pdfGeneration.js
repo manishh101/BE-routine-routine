@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const { processRoutineSlots, processMultiGroupClasses } = require('./routineDataProcessor');
+const { getLabGroupsForSection, getSectionLabGroupLabel } = require('./sectionUtils');
 
 // Base PDF Generation Service - Scalable Architecture
 class PDFGenerationService {
@@ -564,23 +565,16 @@ class PDFGenerationService {
       return isAltWeek ? `${classData.labGroupLabel} - Alt Week` : classData.labGroupLabel;
     }
     
-    // Alternative week handling
+    // Alternative week handling - using dynamic section utils
     if (isAltWeek) {
-      const sectionGroups = classData.section === 'CD' ? ['C', 'D'] : ['A', 'B'];
-      if (classData.labGroup === 'ALL') {
-        return `(Groups ${sectionGroups.join(' & ')} - Alt Week)`;
-      }
-      return classData.labGroup ? `(Group ${classData.labGroup} - Alt Week)` : '(Alt Week)';
+      return getSectionLabGroupLabel(classData.labGroup || 'ALL', classData.section, {
+        altWeekSuffix: 'Alt Week'
+      });
     }
     
-    // Regular lab group labels - direct mapping (backend already stores correct values)
+    // Regular lab group labels - using dynamic section utils
     if (classData.labGroup) {
-      const sectionGroups = classData.section === 'CD' ? ['C', 'D'] : ['A', 'B'];
-      if (classData.labGroup === 'ALL') {
-        return `(Groups ${sectionGroups.join(' & ')})`;
-      }
-      // Backend already stores the correct group values (A,B for AB section; C,D for CD section)
-      return `(Group ${classData.labGroup})`;
+      return getSectionLabGroupLabel(classData.labGroup, classData.section);
     }
     
     return '';

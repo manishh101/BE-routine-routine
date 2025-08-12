@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const RoutineSlot = require('../models/RoutineSlot');
+const { getLabGroupsForSection } = require('../utils/sectionUtils');
 
 // Debug route to check multi-group data
 router.get('/multi-groups/:programCode/:semester/:section', async (req, res) => {
@@ -14,7 +15,10 @@ router.get('/multi-groups/:programCode/:semester/:section', async (req, res) => 
       isActive: true
     }).sort({ dayIndex: 1, slotIndex: 1, labGroup: 1 });
 
-    const multiGroupSlots = slots.filter(slot => slot.labGroup && ['A', 'B'].includes(slot.labGroup));
+    const multiGroupSlots = slots.filter(slot => {
+      const validGroups = getLabGroupsForSection(section);
+      return slot.labGroup && validGroups.includes(slot.labGroup);
+    });
 
     console.log(`Found ${slots.length} total slots, ${multiGroupSlots.length} multi-group slots`);
 

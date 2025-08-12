@@ -1,4 +1,4 @@
-const { createPDFGenerator } = require('../utils/pdfGeneration');
+const UnifiedPDFService = require('../services/UnifiedPDFService');
 const Teacher = require('../models/Teacher');
 const Room = require('../models/Room');
 const RoutineSlot = require('../models/RoutineSlot');
@@ -280,9 +280,16 @@ const exportRoutineToPDF = async (req, res) => {
 
     console.log(`📄 Generating PDF for: ${programCode} Sem ${semester} Section ${section}`);
 
-    // Create PDF generator and generate routine PDF
-    const routineGenerator = createPDFGenerator('routine');
-    const pdfBuffer = await routineGenerator.generateClassRoutinePDF(programCode, semester, section);
+    // Use unified PDF service with time slot fix
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateClassSchedulePDF(programCode, semester, section);
+
+    if (!pdfBuffer) {
+      return res.status(404).json({
+        success: false,
+        message: 'No routine data found for the specified program/semester/section'
+      });
+    }
 
     // Set response headers for PDF download
     const fileName = `${programCode.toUpperCase()}_Sem${semester}_${section.toUpperCase()}_Routine_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -358,10 +365,9 @@ const exportTeacherScheduleToPDF = async (req, res) => {
       });
     }
 
-    // Use the SAME PDF service as the working class routine export
-    const PDFRoutineService = require('../services/PDFRoutineService');
-    const pdfService = new PDFRoutineService();
-    const pdfBuffer = await pdfService.generateTeacherSchedulePDF(teacherId, teacher.fullName);
+    // Use the unified PDF service with time slot fix
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateTeacherSchedulePDF(teacherId, teacher.fullName);
 
     if (!pdfBuffer) {
       return res.status(404).json({
@@ -418,10 +424,9 @@ const exportAllTeachersSchedulesToPDF = async (req, res) => {
 
     console.log('📄 Generating all teachers schedules PDF');
 
-    // Use the SAME PDF service as the working class routine export
-    const PDFRoutineService = require('../services/PDFRoutineService');
-    const pdfService = new PDFRoutineService();
-    const pdfBuffer = await pdfService.generateAllTeachersSchedulesPDF();
+    // Use the unified PDF service with time slot fix
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateAllTeachersSchedulesPDF();
 
     if (!pdfBuffer) {
       return res.status(404).json({
@@ -503,10 +508,9 @@ const exportRoomScheduleToPDF = async (req, res) => {
       });
     }
 
-    // Use the SAME PDF service as the working class routine export
-    const PDFRoutineService = require('../services/PDFRoutineService');
-    const pdfService = new PDFRoutineService();
-    const pdfBuffer = await pdfService.generateRoomSchedulePDF(roomId, room.name);
+    // Use the unified PDF service with time slot fix
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateRoomSchedulePDF(roomId, room.name);
 
     if (!pdfBuffer) {
       return res.status(404).json({
@@ -563,106 +567,9 @@ const exportAllRoomSchedulesToPDF = async (req, res) => {
 
     console.log('📄 Generating all room schedules PDF');
 
-    // Get current academic year if not provided
-    const currentAcademicYear = academicYear ? 
-      await require('../models/AcademicCalendar').findById(academicYear) :
-      await require('../models/AcademicCalendar').findOne({ isCurrentYear: true });
-
-    if (!currentAcademicYear) {
-      return res.status(404).json({
-        success: false,
-        message: 'No academic year found'
-      });
-    }
-
-    // Get all active rooms
-    const Room = require('../models/Room');
-    const rooms = await Room.find({ isActive: true }).sort({ name: 1 });
-
-    // Get time slots
-    const TimeSlot = require('../models/TimeSlot');
-    const timeSlots = await TimeSlot.find({ isActive: true }).sort({ sortOrder: 1 });
-
-    // Create a combined PDF document
-    const PDFDocument = require('pdfkit');
-    const doc = new PDFDocument({
-      size: 'A4',
-      layout: 'landscape',
-      margins: { top: 40, bottom: 40, left: 30, right: 30 }
-    });
-
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-
-    const roomGenerator = createPDFGenerator('room');
-
-    // Add cover page
-    doc.fontSize(24)
-       .font('Helvetica-Bold')
-       .text('All Room Schedules', 50, 200, { align: 'center' });
-    
-    doc.fontSize(16)
-       .font('Helvetica')
-       .text('IOE Pulchowk Campus', 50, 250, { align: 'center' })
-       .text(`Academic Year: ${currentAcademicYear.year}`, 50, 280, { align: 'center' });
-       // Removed "Generated on" line to save space for routine grid
-
-    // Process each room
-    for (let i = 0; i < rooms.length; i++) {
-      const room = rooms[i];
-      
-      try {
-        // Get room schedule data (using local helper function)
-        const scheduleData = await getRoomScheduleData(room._id.toString(), academicYear);
-
-        // Add new page
-        if (i > 0) {
-          doc.addPage();
-        } else {
-          doc.addPage(); // Add page after cover
-        }
-
-        // Generate room schedule
-        const startY = roomGenerator.addHeader(doc, {
-          title: `Room Schedule - ${room.name}`,
-          subtitle: `Capacity: ${room.capacity} | Type: ${room.roomType} | Floor: ${room.floor}`,
-          institutionName: 'IOE Pulchowk Campus',
-          academicYear: currentAcademicYear.year
-        });
-
-        // Process routine data
-        const routineGrid = roomGenerator.processRoomSchedule(scheduleData.routine || {});
-
-        // Calculate dimensions
-        const dimensions = roomGenerator.calculateTableDimensions(timeSlots, {
-          width: doc.page.width,
-          height: doc.page.height,
-          margins: doc.options.margins
-        });
-
-        // Draw table
-        roomGenerator.drawTableStructure(doc, dimensions, timeSlots, startY);
-        roomGenerator.fillRoomScheduleData(doc, routineGrid, timeSlots, dimensions, startY);
-
-        // Add footer
-        roomGenerator.addFooter(doc);
-
-        console.log(`✅ Added ${room.name} to combined PDF`);
-
-      } catch (roomError) {
-        console.error(`❌ Error processing room ${room.name}:`, roomError);
-      }
-    }
-
-    // Finalize document
-    doc.end();
-
-    // Wait for PDF completion
-    const pdfBuffer = await new Promise((resolve) => {
-      doc.on('end', () => {
-        resolve(Buffer.concat(chunks));
-      });
-    });
+    // Use the unified PDF service with time slot fix
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateAllRoomsSchedulePDF();
 
     // Set response headers
     const fileName = `All_Room_Schedules_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -707,17 +614,28 @@ const exportTeacherWorkloadReport = async (req, res) => {
     const { teacherId } = req.params;
     console.log(`📊 Generating workload report for teacher: ${teacherId}`);
 
-    // Generate PDF workload report
-    const teacherGenerator = createPDFGenerator('teacher');
-    const pdfBuffer = await teacherGenerator.generateTeacherWorkloadReport(teacherId);
-
-    // Get teacher name for filename
-    const Teacher = require('../models/Teacher');
+    // Get teacher information
     const teacher = await Teacher.findById(teacherId);
-    const teacherName = teacher ? (teacher.fullName || teacher.shortName) : 'Teacher';
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher not found'
+      });
+    }
+
+    // Use unified service for teacher schedule (workload analysis can be derived from schedule)
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateTeacherSchedulePDF(teacherId, teacher.fullName);
+
+    if (!pdfBuffer) {
+      return res.status(404).json({
+        success: false,
+        message: 'No schedule data found for this teacher'
+      });
+    }
 
     // Set response headers
-    const fileName = `${teacherName.replace(/[^a-zA-Z0-9]/g, '_')}_Workload_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+    const fileName = `${teacher.fullName.replace(/[^a-zA-Z0-9]/g, '_')}_Workload_Report_${new Date().toISOString().split('T')[0]}.pdf`;
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -759,17 +677,28 @@ const exportRoomUtilizationReport = async (req, res) => {
     const { roomId } = req.params;
     console.log(`🏢 Generating utilization report for room: ${roomId}`);
 
-    // Generate PDF utilization report
-    const roomGenerator = createPDFGenerator('room');
-    const pdfBuffer = await roomGenerator.generateRoomUtilizationReport(roomId);
-
-    // Get room name for filename
-    const Room = require('../models/Room');
+    // Get room information
     const room = await Room.findById(roomId);
-    const roomName = room ? room.name : 'Room';
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Room not found'
+      });
+    }
+
+    // Use unified service for room schedule (utilization can be derived from schedule)
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateRoomSchedulePDF(roomId, room.name);
+
+    if (!pdfBuffer) {
+      return res.status(404).json({
+        success: false,
+        message: 'No schedule data found for this room'
+      });
+    }
 
     // Set response headers
-    const fileName = `${roomName.replace(/[^a-zA-Z0-9]/g, '_')}_Utilization_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+    const fileName = `${room.name.replace(/[^a-zA-Z0-9]/g, '_')}_Utilization_Report_${new Date().toISOString().split('T')[0]}.pdf`;
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -789,39 +718,25 @@ const exportRoomUtilizationReport = async (req, res) => {
   }
 };
 
-/**
- * @swagger
- * /api/pdf/room/building/{buildingId}/export:
- *   get:
- *     summary: Export all rooms schedules in a building to PDF
- *     tags: [PDF Export]
- *     parameters:
- *       - in: path
- *         name: buildingId
- *         required: true
- *         schema:
- *           type: string
- *         description: Building ID
- *     responses:
- *       200:
- *         description: PDF file generated successfully
- */
+// Simplified building rooms export - use unified service
 const exportBuildingRoomsSchedulesToPDF = async (req, res) => {
   try {
     const { buildingId } = req.params;
     console.log(`🏢 Generating building rooms schedules PDF for building: ${buildingId}`);
 
-    // Generate PDF for building rooms
-    const roomGenerator = createPDFGenerator('room');
-    const pdfBuffer = await roomGenerator.generateBuildingRoomsSchedulePDF(buildingId);
+    // For now, use the all rooms export (can be enhanced later to filter by building)
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateAllRoomsSchedulePDF();
 
-    // Get building name for filename
-    const Building = require('../models/Building');
-    const building = await Building.findById(buildingId);
-    const buildingName = building ? building.name : 'Building';
+    if (!pdfBuffer) {
+      return res.status(404).json({
+        success: false,
+        message: 'No room schedule data found'
+      });
+    }
 
     // Set response headers
-    const fileName = `${buildingName.replace(/[^a-zA-Z0-9]/g, '_')}_Rooms_Schedules_${new Date().toISOString().split('T')[0]}.pdf`;
+    const fileName = `Building_${buildingId}_Rooms_Schedules_${new Date().toISOString().split('T')[0]}.pdf`;
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -841,24 +756,20 @@ const exportBuildingRoomsSchedulesToPDF = async (req, res) => {
   }
 };
 
-/**
- * Enhanced batch export - uses new modular generator methods
- * @swagger
- * /api/pdf/teacher/enhanced/all:
- *   get:
- *     summary: Export all teachers' schedules using enhanced generator
- *     tags: [PDF Export]
- *     responses:
- *       200:
- *         description: PDF file generated successfully
- */
+// Enhanced exports using unified service
 const exportEnhancedAllTeachersSchedules = async (req, res) => {
   try {
     console.log('📚 Generating enhanced all teachers schedules PDF...');
 
-    // Use the enhanced generator method
-    const teacherGenerator = createPDFGenerator('teacher');
-    const pdfBuffer = await teacherGenerator.generateAllTeachersSchedulePDF();
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateAllTeachersSchedulesPDF();
+
+    if (!pdfBuffer) {
+      return res.status(404).json({
+        success: false,
+        message: 'No teacher schedule data found'
+      });
+    }
 
     // Set response headers
     const fileName = `Enhanced_All_Teachers_Schedules_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -881,24 +792,19 @@ const exportEnhancedAllTeachersSchedules = async (req, res) => {
   }
 };
 
-/**
- * Enhanced batch export for rooms
- * @swagger
- * /api/pdf/room/enhanced/all:
- *   get:
- *     summary: Export all rooms' schedules using enhanced generator
- *     tags: [PDF Export]
- *     responses:
- *       200:
- *         description: PDF file generated successfully
- */
 const exportEnhancedAllRoomsSchedules = async (req, res) => {
   try {
     console.log('🏢 Generating enhanced all rooms schedules PDF...');
 
-    // Use the enhanced generator method
-    const roomGenerator = createPDFGenerator('room');
-    const pdfBuffer = await roomGenerator.generateAllRoomsSchedulePDF();
+    const unifiedService = new UnifiedPDFService();
+    const pdfBuffer = await unifiedService.generateAllRoomsSchedulePDF();
+
+    if (!pdfBuffer) {
+      return res.status(404).json({
+        success: false,
+        message: 'No room schedule data found'
+      });
+    }
 
     // Set response headers
     const fileName = `Enhanced_All_Rooms_Schedules_${new Date().toISOString().split('T')[0]}.pdf`;

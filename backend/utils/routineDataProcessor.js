@@ -165,8 +165,8 @@ const processMultiGroupClasses = (routine) => {
           teacherNames: enhancedGroups.map(g => g.teacherNames).flat(),
           teacherShortNames: enhancedGroups.map(g => g.teacherShortNames).flat(),
           rooms: enhancedGroups.map(g => g.roomName),
-          // Add section information for proper group mapping
-          section: enhancedGroups[0].section || 'AB'
+          // Add section information for proper group mapping - dynamic fallback
+          section: enhancedGroups[0].section || 'AB' // Keep AB as default for backward compatibility
         };
       } else {
         // Single class or single item from array

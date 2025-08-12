@@ -4,18 +4,9 @@ const { validationResult } = require('express-validator');
 const RoutineSlot = require('../models/RoutineSlot');
 const AcademicCalendar = require('../models/AcademicCalendar');
 const PDFRoutineService = require('../services/PDFRoutineService');
+const { getLabGroupsForSection } = require('../utils/sectionUtils');
 
-// Helper function to get lab groups for a section
-const getLabGroupsForSection = (section) => {
-  switch(section) {
-    case 'AB':
-      return ['A', 'B'];
-    case 'CD':
-      return ['C', 'D'];
-    default:
-      return ['A', 'B']; // Default fallback
-  }
-};
+// Helper function removed - now using dynamic sectionUtils.getLabGroupsForSection()
 
 // @desc    Get all rooms
 // @route   GET /api/rooms

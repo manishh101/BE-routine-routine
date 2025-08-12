@@ -13,6 +13,7 @@ const { validationResult } = require('express-validator');
 const { publishToQueue } = require('../services/queue.service');
 const { ConflictDetectionService } = require('../services/conflictDetection');
 const { getTimeSlotsSorted, createTimeSlotMap } = require('../utils/timeSlotUtils');
+const { getLabGroupsForSection, getSectionLabGroupLabel } = require('../utils/sectionUtils');
 // Excel utilities have been removed
 const multer = require('multer');
 const path = require('path');
@@ -3320,31 +3321,12 @@ function generateElectiveRecommendations(conflicts) {
   return recommendations;
 };
 
-// Helper function to get lab groups for a section
-const getLabGroupsForSection = (section) => {
-  switch(section) {
-    case 'AB':
-      return ['A', 'B'];
-    case 'CD':
-      return ['C', 'D'];
-    default:
-      return ['A', 'B']; // Default fallback
-  }
-};
+// Helper function removed - now using dynamic sectionUtils.getLabGroupsForSection()
 
 // Helper function to get section-appropriate lab group label
-const getSectionLabGroupLabel = (labGroup, section) => {
-  if (!labGroup) return '';
-  
-  const sectionGroups = getLabGroupsForSection(section);
-  
-  // If labGroup is 'ALL', show both groups for the section
-  if (labGroup === 'ALL') {
-    return `(Groups ${sectionGroups.join(' & ')})`;
-  }
-  
-  // For specific groups, just show the group letter
-  return `(Group ${labGroup})`;
+const getSectionLabGroupLabel_LOCAL = (labGroup, section) => {
+  // Use the imported function from sectionUtils
+  return getSectionLabGroupLabel(labGroup, section, { includeParentheses: false });
 };
 
 // @desc    Get room schedule/routine

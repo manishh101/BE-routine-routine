@@ -215,7 +215,7 @@ routeHandler('/api/templates', './routes/templates');
 routeHandler('/api/conflicts', './routes/conflicts');
 routeHandler('/api/health', './routes/health');
 // Excel route has been removed
-routeHandler('/api/pdf', './routes/pdf');
+// PDF routes consolidated into /api/routines - removed separate /api/pdf
 routeHandler('/api/debug', './routes/debug');
 
 // Base route
