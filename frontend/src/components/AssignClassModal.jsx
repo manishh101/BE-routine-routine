@@ -186,13 +186,16 @@ const AssignClassModal = ({
   // Fetch elective groups for this program-semester to determine if electives exist
   const {
     data: electiveGroupsData,
-    isLoading: electiveGroupsLoading
+    isLoading: electiveGroupsLoading,
+    isError: electiveGroupsError
   } = useQuery({
     queryKey: ['electiveGroups', programCode, semester],
     queryFn: () => {
       return electiveGroupsAPI.getElectivesByProgram(programCode, semester);
     },
     enabled: !!(programCode && semester && visible),
+    retry: 1, // Only retry once to fail fast
+    staleTime: 30000, // Cache for 30 seconds
   });
 
   // Fetch all teachers
@@ -224,8 +227,29 @@ const AssignClassModal = ({
   const electiveGroups = Array.isArray(electiveGroupsData?.data) ? electiveGroupsData.data : [];
   
   // Check if current semester has electives (dynamic for any program)
-  const hasElectiveGroups = electiveGroups.length > 0;
+  // Add fallback for known elective semesters when API fails
+  const hasElectiveGroupsFromAPI = electiveGroups.length > 0;
+  
+  // Fallback logic: Assume semesters 7 and 8 have electives for BEI and BCT programs
+  // when the API fails or returns no data
+  const hasElectiveGroupsFallback = (programCode === 'BEI' || programCode === 'BCT') && 
+                                   (semester === '7' || semester === 7 || semester === '8' || semester === 8);
+  
+  // Use API data if available, otherwise fall back to known elective semesters
+  const hasElectiveGroups = hasElectiveGroupsFromAPI || 
+                           (electiveGroupsError && hasElectiveGroupsFallback);
+  
   const isElectiveSemester = hasElectiveGroups;
+  
+  console.log('🎯 Elective checkbox debug:', {
+    programCode,
+    semester,
+    hasElectiveGroupsFromAPI,
+    hasElectiveGroupsFallback,
+    electiveGroupsError: !!electiveGroupsError,
+    finalHasElectiveGroups: hasElectiveGroups,
+    isElectiveSemester
+  });
 
   // Filter subjects based on elective selection for any program with elective groups
   const subjects = useMemo(() => {
@@ -237,27 +261,67 @@ const AssignClassModal = ({
       return semesterSubjects;
     }
 
-    // Get all elective subject IDs from elective groups
-    const electiveSubjectIds = new Set();
-    electiveGroups.forEach(group => {
-      group.subjects?.forEach(subject => {
-        electiveSubjectIds.add(subject.subjectId);
+    // If we have elective groups data from API, use it
+    if (hasElectiveGroupsFromAPI && electiveGroups.length > 0) {
+      // Get all elective subject IDs from elective groups
+      const electiveSubjectIds = new Set();
+      electiveGroups.forEach(group => {
+        group.subjects?.forEach(subject => {
+          electiveSubjectIds.add(subject.subjectId);
+        });
       });
-    });
 
-    // For programs with elective groups, filter based on elective checkbox
-    if (isElectiveClass) {
-      // Show only elective subjects when elective is selected
-      return semesterSubjects.filter(subject => {
-        return electiveSubjectIds.has(subject._id || subject.subjectId);
-      });
-    } else {
-      // Show only non-elective subjects when elective is NOT selected
-      return semesterSubjects.filter(subject => {
-        return !electiveSubjectIds.has(subject._id || subject.subjectId);
-      });
+      // For programs with elective groups, filter based on elective checkbox
+      if (isElectiveClass) {
+        // Show only elective subjects when elective is selected
+        return semesterSubjects.filter(subject => {
+          return electiveSubjectIds.has(subject._id || subject.subjectId);
+        });
+      } else {
+        // Show only non-elective subjects when elective is NOT selected
+        return semesterSubjects.filter(subject => {
+          return !electiveSubjectIds.has(subject._id || subject.subjectId);
+        });
+      }
     }
-  }, [allSubjects, semester, hasElectiveGroups, electiveGroups, isElectiveClass]);
+
+    // Fallback logic when API fails but we know this is an elective semester
+    // Use code-based filtering for BEI program as documented in BEI_ELECTIVE_FILTERING_IMPLEMENTATION.md
+    if (programCode === 'BEI' && (semester === '7' || semester === 7 || semester === '8' || semester === 8)) {
+      if (isElectiveClass) {
+        // Show only electives based on subject codes
+        return semesterSubjects.filter(subject => {
+          const code = subject.code || subject.subjectCode_display || '';
+          if (semester === '7' || semester === 7) {
+            return code.startsWith('CT725') || code.startsWith('EX725');
+          }
+          if (semester === '8' || semester === 8) {
+            return code.startsWith('CT765') || code.startsWith('CT785') || 
+                   code.startsWith('EX765') || code.startsWith('EX785') || 
+                   code.startsWith('EE785');
+          }
+          return false;
+        });
+      } else {
+        // Show only core subjects (exclude electives)
+        return semesterSubjects.filter(subject => {
+          const code = subject.code || subject.subjectCode_display || '';
+          if (semester === '7' || semester === 7) {
+            return !code.startsWith('CT725') && !code.startsWith('EX725');
+          }
+          if (semester === '8' || semester === 8) {
+            return !code.startsWith('CT765') && !code.startsWith('CT785') && 
+                   !code.startsWith('EX765') && !code.startsWith('EX785') && 
+                   !code.startsWith('EE785');
+          }
+          return true;
+        });
+      }
+    }
+
+    // For other programs or when no specific logic is available, return all subjects
+    return semesterSubjects;
+  }, [allSubjects, semester, hasElectiveGroups, hasElectiveGroupsFromAPI, electiveGroups, isElectiveClass, programCode]);
 
   // Search filter functions
   const filterTeachersBySearch = useCallback((teachers, searchText) => {

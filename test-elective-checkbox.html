@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Elective Checkbox Logic</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-case { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 3px; }
+        .pass { background-color: #d4edda; color: #155724; }
+        .fail { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>Elective Checkbox Visibility Test</h1>
+    <p>Testing the logic that determines when the elective checkbox should appear in AssignClassModal</p>
+
+    <div id="test-results"></div>
+
+    <script>
+        // Simulate the logic from AssignClassModal.jsx
+        function shouldShowElectiveCheckbox(programCode, semester, electiveGroupsData, electiveGroupsError) {
+            // Simulate the actual logic from the component
+            const electiveGroups = Array.isArray(electiveGroupsData?.data) ? electiveGroupsData.data : [];
+            
+            const hasElectiveGroupsFromAPI = electiveGroups.length > 0;
+            
+            // Fallback logic: Assume semesters 7 and 8 have electives for BEI and BCT programs
+            // when the API fails or returns no data
+            const hasElectiveGroupsFallback = (programCode === 'BEI' || programCode === 'BCT') && 
+                                           (semester === '7' || semester === 7 || semester === '8' || semester === 8);
+            
+            // Use API data if available, otherwise fall back to known elective semesters
+            const hasElectiveGroups = hasElectiveGroupsFromAPI || 
+                                     (electiveGroupsError && hasElectiveGroupsFallback);
+            
+            const isElectiveSemester = hasElectiveGroups;
+            
+            return {
+                hasElectiveGroupsFromAPI,
+                hasElectiveGroupsFallback,
+                hasElectiveGroups,
+                isElectiveSemester,
+                shouldShowCheckbox: isElectiveSemester
+            };
+        }
+
+        // Test cases
+        const testCases = [
+            {
+                name: "BEI Semester 7 with API failure",
+                programCode: "BEI",
+                semester: 7,
+                electiveGroupsData: null,
+                electiveGroupsError: true,
+                expected: true
+            },
+            {
+                name: "BEI Semester 8 with API failure", 
+                programCode: "BEI",
+                semester: "8",
+                electiveGroupsData: null,
+                electiveGroupsError: true,
+                expected: true
+            },
+            {
+                name: "BCT Semester 7 with API failure",
+                programCode: "BCT",
+                semester: 7,
+                electiveGroupsData: null,
+                electiveGroupsError: true,
+                expected: true
+            },
+            {
+                name: "BEI Semester 6 with API failure (should not show)",
+                programCode: "BEI",
+                semester: 6,
+                electiveGroupsData: null,
+                electiveGroupsError: true,
+                expected: false
+            },
+            {
+                name: "BEI Semester 7 with successful API data",
+                programCode: "BEI",
+                semester: 7,
+                electiveGroupsData: { data: [{ id: 1, name: "Elective Group 1" }] },
+                electiveGroupsError: false,
+                expected: true
+            },
+            {
+                name: "BEI Semester 7 with empty API data but no error",
+                programCode: "BEI",
+                semester: 7,
+                electiveGroupsData: { data: [] },
+                electiveGroupsError: false,
+                expected: false
+            },
+            {
+                name: "Other program (not BEI/BCT) with API failure",
+                programCode: "BCE",
+                semester: 7,
+                electiveGroupsData: null,
+                electiveGroupsError: true,
+                expected: false
+            }
+        ];
+
+        function runTests() {
+            const resultsDiv = document.getElementById('test-results');
+            let allPassed = true;
+
+            testCases.forEach((testCase, index) => {
+                const result = shouldShowElectiveCheckbox(
+                    testCase.programCode,
+                    testCase.semester,
+                    testCase.electiveGroupsData,
+                    testCase.electiveGroupsError
+                );
+
+                const passed = result.shouldShowCheckbox === testCase.expected;
+                allPassed = allPassed && passed;
+
+                const testDiv = document.createElement('div');
+                testDiv.className = 'test-case';
+                testDiv.innerHTML = `
+                    <h3>Test ${index + 1}: ${testCase.name}</h3>
+                    <div class="info">
+                        <strong>Input:</strong> Program=${testCase.programCode}, Semester=${testCase.semester}, 
+                        API Error=${testCase.electiveGroupsError}, Expected=${testCase.expected}
+                    </div>
+                    <div class="result ${passed ? 'pass' : 'fail'}">
+                        <strong>Result:</strong> ${passed ? 'PASS' : 'FAIL'}<br>
+                        Should show checkbox: ${result.shouldShowCheckbox}<br>
+                        API has data: ${result.hasElectiveGroupsFromAPI}<br>
+                        Fallback applicable: ${result.hasElectiveGroupsFallback}<br>
+                        Final decision: ${result.hasElectiveGroups}
+                    </div>
+                `;
+                resultsDiv.appendChild(testDiv);
+            });
+
+            // Summary
+            const summaryDiv = document.createElement('div');
+            summaryDiv.className = `test-case result ${allPassed ? 'pass' : 'fail'}`;
+            summaryDiv.innerHTML = `
+                <h2>Test Summary</h2>
+                <strong>${allPassed ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'}</strong><br>
+                ${testCases.filter(t => {
+                    const r = shouldShowElectiveCheckbox(t.programCode, t.semester, t.electiveGroupsData, t.electiveGroupsError);
+                    return r.shouldShowCheckbox === t.expected;
+                }).length} out of ${testCases.length} tests passed.
+            `;
+            resultsDiv.appendChild(summaryDiv);
+        }
+
+        // Run tests when page loads
+        runTests();
+    </script>
+</body>
+</html>
