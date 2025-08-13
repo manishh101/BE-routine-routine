@@ -6,6 +6,9 @@
 import { message } from 'antd';
 import { routinesAPI, teachersAPI, roomsAPI } from './api';
 
+// We'll need to get semesterGroup from caller since this is a service
+// Services shouldn't directly use React context
+
 // Constants
 const PDF_CONFIG = {
   MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB (PDFs can be larger)
@@ -126,13 +129,13 @@ class PDFExportService {
  */
 class TeacherPDFExportService {
   async exportTeacherSchedule(teacherId, options = {}) {
-    const { teacherName, onStart, onSuccess, onError } = options;
+    const { teacherName, semesterGroup = 'all', onStart, onSuccess, onError } = options;
     
     try {
       onStart?.();
       message.loading(MESSAGES.TEACHER.LOADING, 0);
 
-      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId);
+      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId, semesterGroup);
       
       // Create download
       const filename = this._generateTeacherFilename(teacherName || 'Teacher');
@@ -152,13 +155,13 @@ class TeacherPDFExportService {
   }
 
   async exportAllTeachersSchedules(options = {}) {
-    const { onStart, onSuccess, onError, onProgress } = options;
+    const { semesterGroup = 'all', onStart, onSuccess, onError, onProgress } = options;
     
     try {
       onStart?.();
       message.loading(MESSAGES.ALL_TEACHERS.LOADING, 0);
 
-      const response = await teachersAPI.exportAllTeachersSchedulesToPDF();
+      const response = await teachersAPI.exportAllTeachersSchedulesToPDF(semesterGroup);
       
       // Create download
       const filename = this._generateAllTeachersFilename();
@@ -205,13 +208,13 @@ class TeacherPDFExportService {
  */
 class RoomPDFExportService {
   async exportRoomSchedule(roomId, options = {}) {
-    const { roomName, onStart, onSuccess, onError } = options;
+    const { roomName, semesterGroup = 'all', onStart, onSuccess, onError } = options;
     
     try {
       onStart?.();
       message.loading(MESSAGES.ROOM.LOADING, 0);
 
-      const response = await roomsAPI.exportRoomScheduleToPDF(roomId);
+      const response = await roomsAPI.exportRoomScheduleToPDF(roomId, semesterGroup);
       
       // Create download
       const filename = this._generateRoomFilename(roomName || 'Room');
@@ -231,13 +234,13 @@ class RoomPDFExportService {
   }
 
   async exportAllRoomsSchedules(options = {}) {
-    const { onStart, onSuccess, onError } = options;
+    const { semesterGroup = 'all', onStart, onSuccess, onError } = options;
     
     try {
       onStart?.();
       message.loading(MESSAGES.ALL_ROOMS.LOADING, 0);
 
-      const response = await roomsAPI.exportAllRoomSchedulesToPDF();
+      const response = await roomsAPI.exportAllRoomSchedulesToPDF(semesterGroup);
       
       // Create download
       const filename = this._generateAllRoomsFilename();

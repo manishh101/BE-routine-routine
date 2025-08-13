@@ -8,6 +8,7 @@ import { Button, Space, Tooltip } from 'antd';
 import { FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import { teachersAPI } from '../services/api';
+import { useSemesterGroup } from '../contexts/SemesterGroupContext';
 
 const TeacherPDFActions = ({ 
   teacherId,
@@ -17,6 +18,7 @@ const TeacherPDFActions = ({
 }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingAll, setIsExportingAll] = useState(false);
+  const { semesterGroup } = useSemesterGroup();
 
   const handleExportTeacherSchedule = async () => {
     if (!teacherId) {
@@ -27,9 +29,9 @@ const TeacherPDFActions = ({
     setIsExporting(true);
     
     try {
-      console.log('🎯 Exporting teacher schedule to PDF:', { teacherId, teacherName });
+      console.log('🎯 Exporting teacher schedule to PDF:', { teacherId, teacherName, semesterGroup });
       
-      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId);
+      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId, semesterGroup);
       
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
@@ -67,9 +69,9 @@ const TeacherPDFActions = ({
     setIsExportingAll(true);
     
     try {
-      console.log('🎯 Exporting all teachers schedules to PDF');
+      console.log('🎯 Exporting all teachers schedules to PDF', { semesterGroup });
       
-      const response = await teachersAPI.exportAllTeachersSchedulesToPDF();
+      const response = await teachersAPI.exportAllTeachersSchedulesToPDF(semesterGroup);
       
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));

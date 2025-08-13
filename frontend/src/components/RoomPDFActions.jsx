@@ -8,6 +8,7 @@ import { Button, Space, Tooltip } from 'antd';
 import { FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import { roomsAPI } from '../services/api';
+import { useSemesterGroup } from '../contexts/SemesterGroupContext';
 
 const RoomPDFActions = ({ 
   roomId,
@@ -17,6 +18,7 @@ const RoomPDFActions = ({
 }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingAll, setIsExportingAll] = useState(false);
+  const { semesterGroup } = useSemesterGroup();
 
   const handleExportRoomSchedule = async () => {
     if (!roomId) {
@@ -27,9 +29,9 @@ const RoomPDFActions = ({
     setIsExporting(true);
     
     try {
-      console.log('🎯 Exporting room schedule to PDF:', { roomId, roomName });
+      console.log('🎯 Exporting room schedule to PDF:', { roomId, roomName, semesterGroup });
       
-      const response = await roomsAPI.exportRoomScheduleToPDF(roomId);
+      const response = await roomsAPI.exportRoomScheduleToPDF(roomId, semesterGroup);
       
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
@@ -67,9 +69,9 @@ const RoomPDFActions = ({
     setIsExportingAll(true);
     
     try {
-      console.log('🎯 Exporting all room schedules to PDF');
+      console.log('🎯 Exporting all room schedules to PDF', { semesterGroup });
       
-      const response = await roomsAPI.exportAllRoomSchedulesToPDF();
+      const response = await roomsAPI.exportAllRoomSchedulesToPDF(semesterGroup);
       
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));

@@ -351,16 +351,18 @@ export const teachersAPI = {
   },
 
   // PDF Export Methods (New)
-  exportTeacherScheduleToPDF: (id) => {
+  exportTeacherScheduleToPDF: (id, semesterGroup = 'all') => {
+    const params = semesterGroup && semesterGroup !== 'all' ? `?semesterGroup=${semesterGroup}` : '';
     return queuedRequest(
-      () => api.get(`/routines/teacher/${id}/export-pdf`, { responseType: 'blob' }),
+      () => api.get(`/routines/teacher/${id}/export-pdf${params}`, { responseType: 'blob' }),
       `exporting schedule to PDF for teacher ${id}`
     );
   },
 
-  exportAllTeachersSchedulesToPDF: () => {
+  exportAllTeachersSchedulesToPDF: (semesterGroup = 'all') => {
+    const params = semesterGroup && semesterGroup !== 'all' ? `?semesterGroup=${semesterGroup}` : '';
     return queuedRequest(
-      () => api.get('/routines/teachers/export-pdf', { responseType: 'blob' }),
+      () => api.get(`/routines/teachers/export-pdf${params}`, { responseType: 'blob' }),
       'exporting all teachers schedules to PDF'
     );
   },
@@ -527,12 +529,18 @@ export const roomsAPI = {
   }),
   
   // PDF Export Methods (New)
-  exportRoomScheduleToPDF: (roomId) => api.get(`/routines/room/${roomId}/export-pdf`, {
-    responseType: 'blob'
-  }),
-  exportAllRoomSchedulesToPDF: () => api.get('/routines/rooms/export-pdf', {
-    responseType: 'blob'
-  })
+  exportRoomScheduleToPDF: (roomId, semesterGroup = 'all') => {
+    const params = semesterGroup && semesterGroup !== 'all' ? `?semesterGroup=${semesterGroup}` : '';
+    return api.get(`/routines/room/${roomId}/export-pdf${params}`, {
+      responseType: 'blob'
+    });
+  },
+  exportAllRoomSchedulesToPDF: (semesterGroup = 'all') => {
+    const params = semesterGroup && semesterGroup !== 'all' ? `?semesterGroup=${semesterGroup}` : '';
+    return api.get(`/routines/rooms/export-pdf${params}`, {
+      responseType: 'blob'
+    });
+  }
 };
 
 // TimeSlots API
