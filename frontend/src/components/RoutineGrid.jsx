@@ -526,6 +526,7 @@ const RoutineGrid = ({
   };
 
   const getClassTypeText = (classType) => {
+    console.log('🔍 getClassTypeText called with:', classType);
     switch (classType) {
       case 'L': return 'Lecture';
       case 'P': return 'Practical';
@@ -1358,7 +1359,12 @@ const RoutineGrid = ({
           color: '#666',
           marginBottom: '2px'
         }}>
-          [{getClassTypeText(classData.classType)}]
+          {(() => {
+            console.log('🔍 Rendering class type for:', classData);
+            console.log('🔍 classData.classType:', classData.classType);
+            console.log('🔍 classData.isElectiveClass:', classData.isElectiveClass);
+            return `[${getClassTypeText(classData.classType)}]`;
+          })()}
         </div>
         
         {/* Teacher */}

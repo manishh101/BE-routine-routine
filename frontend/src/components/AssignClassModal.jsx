@@ -210,6 +210,34 @@ const AssignClassModal = ({
   const rooms = Array.isArray(roomsData?.data?.data) ? roomsData.data.data :
                Array.isArray(roomsData?.data) ? roomsData.data : [];
 
+  // Function to check if a subject is an elective based on program and subject code
+  const isElectiveSubject = useCallback((subject, programCode) => {
+    if (!subject || !subject.code) return false;
+    
+    const code = subject.code.toUpperCase();
+    
+    if (programCode === 'BEI') {
+      // BEI elective patterns from semester 7 & 8
+      return code.match(/^(CT725|CT765|CT785|EX725|EX765|EX785|EE785)-?\d+$/);
+    } else if (programCode === 'BCT') {
+      // BCT elective patterns from semester 7 & 8
+      return code.match(/^(CT72[5-9]|CT76[0-9]|CT78[0-9]|EE72[0-9]|EX72[0-9]|EX76[0-9]|EX78[0-9])\d+$/);
+    }
+    
+    return false;
+  }, []);
+
+  // Function to get filtered subjects for elective mode
+  const getFilteredSubjects = useCallback(() => {
+    if (!isElectiveClass) {
+      // Normal mode: show all subjects for the semester
+      return subjects;
+    } else {
+      // Elective mode: show only elective subjects
+      return subjects.filter(subject => isElectiveSubject(subject, programCode));
+    }
+  }, [subjects, isElectiveClass, isElectiveSubject, programCode]);
+
   // Search filter functions
   const filterTeachersBySearch = useCallback((teachers, searchText) => {
     if (!searchText.trim()) return teachers;
@@ -343,11 +371,8 @@ const AssignClassModal = ({
       setTargetSections(['AB', 'CD']);
       
       // Trigger teacher availability check for elective classes
-      // Default to 'L' (Lecture) for electives unless specified otherwise
-      if (!currentClassType) {
-        setCurrentClassType('L');
-        filterTeachersBasedOnClassType('L');
-      } else {
+      // Don't set a default class type - let user choose
+      if (currentClassType) {
         // Re-filter teachers with current class type
         filterTeachersBasedOnClassType(currentClassType);
       }
@@ -686,7 +711,7 @@ const AssignClassModal = ({
       }
     }
 
-    if (values.classType === 'P' && !values.labGroupType) errors.push('Lab group type is required for practical classes');
+    if (values.classType === 'P' && !isElectiveClass && !values.labGroupType) errors.push('Lab group type is required for practical classes');
 
     if (values.classType === 'P' && values.labGroupType === 'bothGroups') {
       if (useSameConfigForBothGroups) {
@@ -706,19 +731,26 @@ const AssignClassModal = ({
     } else {
       // Handle validation for multiple subjects in electives
       if (isElectiveClass && selectedSubjects.length > 0) {
+        console.log('🔍 Validating elective class...');
+        console.log('🔍 selectedSubjects:', selectedSubjects);
+        console.log('🔍 subjectTeacherPairs:', subjectTeacherPairs);
+        
         if (selectedSubjects.length === 0) {
           errors.push('At least one subject is required for elective class');
         }
         if (subjectTeacherPairs.some(pair => !pair.teacherId)) {
+          console.log('❌ Some subjects missing teachers');
           errors.push('All elective subjects must have assigned teachers');
         }
         
         // For rooms, all subjects must have rooms assigned
         if (subjectTeacherPairs.some(pair => !pair.roomId)) {
+          console.log('❌ Some subjects missing rooms');
           errors.push('All elective subjects must have rooms assigned');
         }
         
         if (selectedSubjects.length !== subjectTeacherPairs.filter(pair => pair.teacherId).length) {
+          console.log('❌ Teacher count mismatch');
           errors.push('All elective subjects must have assigned teachers');
         }
       } else if (!values.subjectId) {
@@ -726,7 +758,7 @@ const AssignClassModal = ({
       }
       
       // For lab classes (P), teachers and room are required regardless of lab group type
-      if (values.classType === 'P') {
+      if (values.classType === 'P' && !isElectiveClass) {
         if (!values.teacherIds?.length) errors.push('At least one teacher must be selected for lab class');
         if (!values.roomId) errors.push('Room is required for lab class');
       } else if (values.classType !== 'BREAK' && !(isElectiveClass && selectedSubjects.length > 0)) {
@@ -1284,7 +1316,7 @@ const AssignClassModal = ({
                 </Card>
               )}
               
-              {currentClassType === 'P' && (
+              {currentClassType === 'P' && !isElectiveClass && (
                 <>
                   <Form.Item name="labGroupType" label="Lab Group Type" rules={[{ required: true, message: 'Please select lab group type' }]}>
                     <Select placeholder="Select lab group type">
@@ -1681,7 +1713,7 @@ const AssignClassModal = ({
                         value={null}
                         onChange={handleAddSubject}
                       >
-                        {subjects
+                        {getFilteredSubjects()
                           .filter(s => !selectedSubjects.find(selected => selected.subjectId === s.subjectId))
                           .map(s => (
                           <Option key={s.subjectId} value={s.subjectId}>
@@ -1993,7 +2025,13 @@ const AssignClassModal = ({
 
           <Form.Item name="notes" label="Notes (Optional)"><TextArea placeholder="Additional notes..." rows={2} /></Form.Item>
         </Form>
-        {checking && <div style={{ textAlign: 'center' }}><Spin tip="Checking for conflicts..." /></div>}
+        {checking && (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <Spin>
+              <div style={{ padding: '20px' }}>Checking for conflicts...</div>
+            </Spin>
+          </div>
+        )}
       </Space>
     </Modal>
   );
