@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Modal,
   Form,
@@ -40,7 +40,8 @@ import {
   subjectsAPI,
   timeSlotsAPI,
   programsAPI,
-  academicCalendarAPI
+  academicCalendarAPI,
+  electiveGroupsAPI
 } from '../services/api';
 import { 
   normalizeTimeSlotId, 
@@ -89,7 +90,7 @@ const AssignClassModal = ({
   const [filteredTeachersForSearch, setFilteredTeachersForSearch] = useState([]);
   const [filteredRoomsForSearch, setFilteredRoomsForSearch] = useState([]);
   
-  // Elective management states for 7th and 8th semester
+  // Elective management states for semesters with elective groups
   const [isElectiveClass, setIsElectiveClass] = useState(false);
   const [electiveNumber, setElectiveNumber] = useState(1);
   const [electiveType, setElectiveType] = useState('TECHNICAL');
@@ -104,9 +105,6 @@ const AssignClassModal = ({
   // Multiple subjects for electives
   const [selectedSubjects, setSelectedSubjects] = useState([]);
   const [subjectTeacherPairs, setSubjectTeacherPairs] = useState([]);
-
-  // Check if current semester is eligible for electives (7th or 8th)
-  const isElectiveSemester = semester === 7 || semester === 8;
 
   // Use App.useApp for proper context support in modals
   const { modal } = App.useApp();
@@ -185,6 +183,18 @@ const AssignClassModal = ({
     enabled: !!(programCode && semester && visible),
   });
 
+  // Fetch elective groups for this program-semester to determine if electives exist
+  const {
+    data: electiveGroupsData,
+    isLoading: electiveGroupsLoading
+  } = useQuery({
+    queryKey: ['electiveGroups', programCode, semester],
+    queryFn: () => {
+      return electiveGroupsAPI.getElectivesByProgram(programCode, semester);
+    },
+    enabled: !!(programCode && semester && visible),
+  });
+
   // Fetch all teachers
   const {
     data: teachersData,
@@ -205,10 +215,49 @@ const AssignClassModal = ({
     enabled: visible,
   });
 
-  const subjects = Array.isArray(subjectsData?.data) ? subjectsData.data : [];
+  const allSubjects = Array.isArray(subjectsData?.data) ? subjectsData.data : [];
   const teachers = Array.isArray(teachersData?.data) ? teachersData.data : [];
   const rooms = Array.isArray(roomsData?.data?.data) ? roomsData.data.data :
                Array.isArray(roomsData?.data) ? roomsData.data : [];
+
+  // Get elective groups for this program/semester
+  const electiveGroups = Array.isArray(electiveGroupsData?.data) ? electiveGroupsData.data : [];
+  
+  // Check if current semester has electives (dynamic for any program)
+  const hasElectiveGroups = electiveGroups.length > 0;
+  const isElectiveSemester = hasElectiveGroups;
+
+  // Filter subjects based on elective selection for any program with elective groups
+  const subjects = useMemo(() => {
+    // First filter by semester (this is already done by the API, but being explicit)
+    const semesterSubjects = allSubjects.filter(subject => subject.semester === parseInt(semester));
+    
+    // For programs without elective groups, return all semester subjects
+    if (!hasElectiveGroups) {
+      return semesterSubjects;
+    }
+
+    // Get all elective subject IDs from elective groups
+    const electiveSubjectIds = new Set();
+    electiveGroups.forEach(group => {
+      group.subjects?.forEach(subject => {
+        electiveSubjectIds.add(subject.subjectId);
+      });
+    });
+
+    // For programs with elective groups, filter based on elective checkbox
+    if (isElectiveClass) {
+      // Show only elective subjects when elective is selected
+      return semesterSubjects.filter(subject => {
+        return electiveSubjectIds.has(subject._id || subject.subjectId);
+      });
+    } else {
+      // Show only non-elective subjects when elective is NOT selected
+      return semesterSubjects.filter(subject => {
+        return !electiveSubjectIds.has(subject._id || subject.subjectId);
+      });
+    }
+  }, [allSubjects, semester, hasElectiveGroups, electiveGroups, isElectiveClass]);
 
   // Search filter functions
   const filterTeachersBySearch = useCallback((teachers, searchText) => {
@@ -330,7 +379,7 @@ const AssignClassModal = ({
     
     if (checked) {
       // Reset to elective-specific defaults
-      const defaultElectiveNumber = semester === 7 ? 1 : 1; // Default to first elective
+      const defaultElectiveNumber = 1; // Always default to first elective group
       setElectiveNumber(defaultElectiveNumber);
       setElectiveType('TECHNICAL');
       
@@ -342,6 +391,10 @@ const AssignClassModal = ({
       });
       setTargetSections(['AB', 'CD']);
       
+      // Clear selected subjects and pairs for elective mode
+      setSelectedSubjects([]);
+      setSubjectTeacherPairs([]);
+      
       // Trigger teacher availability check for elective classes
       // Default to 'L' (Lecture) for electives unless specified otherwise
       if (!currentClassType) {
@@ -352,12 +405,17 @@ const AssignClassModal = ({
         filterTeachersBasedOnClassType(currentClassType);
       }
     } else {
-      // Reset elective-specific fields
+      // Reset elective-specific fields and clear subject selection
       form.setFieldsValue({
+        subjectId: undefined,
         electiveNumber: undefined,
         electiveType: undefined,
         targetSections: undefined
       });
+      
+      // Clear selected subjects and pairs when leaving elective mode
+      setSelectedSubjects([]);
+      setSubjectTeacherPairs([]);
       
       // Re-filter teachers when leaving elective mode
       if (currentClassType) {
@@ -670,19 +728,17 @@ const AssignClassModal = ({
     // Skip most validation for BREAK class types
     if (values.classType === 'BREAK') return errors;
 
-    // Elective class validation for 7th and 8th semester
+    // Elective class validation for semesters with elective groups
     if (isElectiveClass && isElectiveSemester) {
       if (!values.electiveNumber) errors.push('Elective number is required');
       if (!values.electiveType) errors.push('Elective type is required');
       if (!values.targetSections || values.targetSections.length === 0) {
         errors.push('Target sections are required for elective classes');
       }
-      // Validate elective number based on semester
-      if (semester === 7 && values.electiveNumber !== 1) {
-        errors.push('7th semester only has one elective');
-      }
-      if (semester === 8 && ![1, 2].includes(values.electiveNumber)) {
-        errors.push('8th semester has Elective I and Elective II only');
+      // Validate elective number based on available elective groups
+      const maxElectiveNumber = electiveGroups.length;
+      if (maxElectiveNumber > 0 && (!values.electiveNumber || values.electiveNumber < 1 || values.electiveNumber > maxElectiveNumber)) {
+        errors.push(`Elective number must be between 1 and ${maxElectiveNumber} for this semester`);
       }
     }
 
@@ -863,9 +919,10 @@ const AssignClassModal = ({
         slotIndexes: isMultiPeriod ? selectedSlots : [slotIndex]
       };
 
-      // Handle elective classes for 7th and 8th semester
+      // Handle elective classes for semesters with elective groups
       if (isElectiveClass && isElectiveSemester) {
-        const electiveLabel = semester === 7 ? 'Elective' : 
+        // Generate elective label based on available groups
+        const electiveLabel = electiveGroups.length === 1 ? 'Elective' : 
                              values.electiveNumber === 1 ? 'Elective I' : 'Elective II';
         
         try {
@@ -1164,24 +1221,42 @@ const AssignClassModal = ({
                 </Select>
               </Form.Item>
               
-              {/* Elective Class Toggle for 7th and 8th Semester */}
+              {/* Elective Class Toggle for semesters with elective groups */}
               {isElectiveSemester && currentClassType && currentClassType !== 'BREAK' && (
-                <Form.Item style={{ marginBottom: '12px' }}>
-                  <Checkbox 
-                    checked={isElectiveClass} 
-                    onChange={(e) => handleElectiveToggle(e.target.checked)}
-                  >
-                    <Text strong style={{ color: '#722ed1' }}>
-                      {semester === 7 ? 'Elective Class' : 'Elective I/II Class'} (Cross-Section)
-                    </Text>
-                    <Text type="secondary" style={{ marginLeft: 8 }}>
-                      {semester === 7 
-                        ? 'Schedule elective for both AB and CD sections'
-                        : 'Schedule Elective I or II for both AB and CD sections'
+                <>
+                  <Form.Item style={{ marginBottom: '12px' }}>
+                    <Checkbox 
+                      checked={isElectiveClass} 
+                      onChange={(e) => handleElectiveToggle(e.target.checked)}
+                    >
+                      <Text strong style={{ color: '#722ed1' }}>
+                        Elective Class (Cross-Section)
+                      </Text>
+                      <Text type="secondary" style={{ marginLeft: 8 }}>
+                        Schedule elective for both AB and CD sections
+                      </Text>
+                    </Checkbox>
+                  </Form.Item>
+                  
+                  {/* Subject filtering information */}
+                  {hasElectiveGroups && (
+                    <Alert 
+                      message={
+                        isElectiveClass 
+                          ? "Elective Mode Active" 
+                          : "Core Subject Mode Active"
                       }
-                    </Text>
-                  </Checkbox>
-                </Form.Item>
+                      description={
+                        isElectiveClass 
+                          ? `Only elective subjects will be shown in subject selection. Toggle off to see core subjects for semester ${semester}.`
+                          : `Only core subjects will be shown in subject selection. Toggle on "Elective Class" to see elective subjects for semester ${semester}.`
+                      }
+                      type={isElectiveClass ? "info" : "warning"}
+                      showIcon 
+                      style={{ marginBottom: '16px', fontSize: '12px' }}
+                    />
+                  )}
+                </>
               )}
 
               {/* Elective-specific fields */}
@@ -1211,20 +1286,22 @@ const AssignClassModal = ({
                           value={electiveNumber}
                           onChange={setElectiveNumber}
                         >
-                          {semester === 7 ? (
-                            <Option value={1}>
-                              <Tag color="blue">Elective</Tag>
-                            </Option>
-                          ) : (
-                            <>
-                              <Option value={1}>
-                                <Tag color="blue">Elective I</Tag>
+                          {electiveGroups.map((group, index) => {
+                            const electiveNum = index + 1;
+                            const label = electiveGroups.length === 1 ? 'Elective' : 
+                                         electiveNum === 1 ? 'Elective I' : 
+                                         electiveNum === 2 ? 'Elective II' : 
+                                         `Elective ${electiveNum}`;
+                            const color = electiveNum === 1 ? 'blue' : 
+                                         electiveNum === 2 ? 'green' : 
+                                         'purple';
+                            
+                            return (
+                              <Option key={electiveNum} value={electiveNum}>
+                                <Tag color={color}>{label}</Tag>
                               </Option>
-                              <Option value={2}>
-                                <Tag color="green">Elective II</Tag>
-                              </Option>
-                            </>
-                          )}
+                            );
+                          })}
                         </Select>
                       </Form.Item>
                     </Col>
@@ -1276,7 +1353,7 @@ const AssignClassModal = ({
                   
                   <Alert 
                     message="Cross-Section Elective" 
-                    description={`This ${semester === 7 ? 'elective' : `elective ${electiveNumber === 1 ? 'I' : 'II'}`} (${electiveType}) class will appear in both selected sections' routines at the same time slot.`}
+                    description={`This ${electiveGroups.length === 1 ? 'elective' : `elective ${electiveNumber === 1 ? 'I' : 'II'}`} (${electiveType}) class will appear in both selected sections' routines at the same time slot.`}
                     type="info" 
                     showIcon 
                     style={{ marginTop: '12px' }}
@@ -1671,10 +1748,15 @@ const AssignClassModal = ({
                   <Row gutter={16}>
                     <Col span={24}>
                       <label style={{ fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>
-                        Add Elective Subjects
+                        <Space>
+                          <span>Add Elective Subjects</span>
+                          <Text type="secondary" style={{ fontSize: '12px', fontWeight: 'normal' }}>
+                            ({subjects.filter(s => !selectedSubjects.find(selected => selected.subjectId === s.subjectId)).length} available)
+                          </Text>
+                        </Space>
                       </label>
                       <Select 
-                        placeholder="Select a subject to add" 
+                        placeholder={`Select elective subject to add (${subjects.length} total available)`}
                         loading={subjectsLoading} 
                         showSearch
                         style={{ width: '100%' }}
@@ -1687,7 +1769,7 @@ const AssignClassModal = ({
                           <Option key={s.subjectId} value={s.subjectId}>
                             <Space>
                               <Tag color="purple">
-                                {semester === 7 ? `Elective (${electiveType})` : 
+                                {electiveGroups.length === 1 ? `Elective (${electiveType})` : 
                                  `Elective ${electiveNumber === 1 ? 'I' : 'II'} (${electiveType})`}
                               </Tag>
                               {s.subjectName_display}
@@ -1862,9 +1944,29 @@ const AssignClassModal = ({
                 // Single subject interface for non-elective classes
                 <Row gutter={16}>
                   <Col span={24}>
-                    <Form.Item name="subjectId" label="Subject" rules={[{ required: true }]}>
+                    <Form.Item 
+                      name="subjectId" 
+                      label={
+                        <Space>
+                          <span>Subject</span>
+                          {hasElectiveGroups && (
+                            <Text type="secondary" style={{ fontSize: '12px' }}>
+                              {isElectiveClass 
+                                ? `(Showing ${subjects.length} elective subjects)`
+                                : `(Showing ${subjects.length} core subjects)`
+                              }
+                            </Text>
+                          )}
+                        </Space>
+                      } 
+                      rules={[{ required: true }]}
+                    >
                       <Select 
-                        placeholder="Select subject" 
+                        placeholder={
+                          hasElectiveGroups 
+                            ? (isElectiveClass ? "Select elective subject" : "Select core subject")
+                            : "Select subject"
+                        }
                         loading={subjectsLoading} 
                         showSearch
                       >
