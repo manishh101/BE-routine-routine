@@ -41,6 +41,53 @@ class UnifiedPDFService {
   }
 
   /**
+   * Deduplicate time slots by prioritizing section-specific over global ones
+   * If there are duplicates with same time range, prefer section-specific
+   */
+  _deduplicateTimeSlots(timeSlots) {
+    if (!timeSlots || timeSlots.length === 0) return timeSlots;
+
+    const uniqueSlots = new Map();
+    
+    // Sort to process global slots first, then section-specific ones
+    // This way section-specific slots will overwrite global ones with same time range
+    const sortedSlots = [...timeSlots].sort((a, b) => {
+      // Global slots first (false before true)
+      const aIsSpecific = a.isGlobal === false;
+      const bIsSpecific = b.isGlobal === false;
+      if (aIsSpecific !== bIsSpecific) {
+        return aIsSpecific ? 1 : -1;
+      }
+      return a.sortOrder - b.sortOrder;
+    });
+
+    for (const slot of sortedSlots) {
+      const timeKey = `${slot.startTime}-${slot.endTime}`;
+      
+      // If we already have this time range
+      if (uniqueSlots.has(timeKey)) {
+        const existing = uniqueSlots.get(timeKey);
+        // Replace if the new slot is section-specific and existing is global
+        if (slot.isGlobal === false && existing.isGlobal !== false) {
+          uniqueSlots.set(timeKey, slot);
+        }
+        // Otherwise keep the existing one
+      } else {
+        uniqueSlots.set(timeKey, slot);
+      }
+    }
+
+    const deduplicatedSlots = Array.from(uniqueSlots.values()).sort((a, b) => a.sortOrder - b.sortOrder);
+    
+    console.log(`🔧 Time slot deduplication: ${timeSlots.length} -> ${deduplicatedSlots.length} slots`);
+    if (timeSlots.length !== deduplicatedSlots.length) {
+      console.log('  ✅ Removed duplicate time slots (prioritizing section-specific over global)');
+    }
+    
+    return deduplicatedSlots;
+  }
+
+  /**
    * Get custom PDF page dimensions based on type
    */
   _getCustomPageSize(type = 'default') {
@@ -1029,17 +1076,21 @@ class UnifiedPDFService {
 
       console.log(`📊 Time slot isolation: Found ${timeSlots.length} time slots (global + section-specific) for ${programCode}-${semester}-${section}`);
 
+      // CRITICAL FIX: Deduplicate time slots to remove duplicates
+      const deduplicatedTimeSlots = this._deduplicateTimeSlots(timeSlots);
+      console.log(`📊 After deduplication: ${deduplicatedTimeSlots.length} unique time slots for ${programCode}-${semester}-${section}`);
+
       // DEBUG: For BCT-3-AB, show time slot details and mapping
       if (programCode === 'BCT' && semester == 3 && section === 'AB') {
-        console.log(`🔍 BCT-3-AB TIME SLOTS (${timeSlots.length} found):`);
-        timeSlots.forEach(slot => {
+        console.log(`🔍 BCT-3-AB TIME SLOTS (${deduplicatedTimeSlots.length} found after deduplication):`);
+        deduplicatedTimeSlots.forEach(slot => {
           console.log(`  TimeSlot ID ${slot._id}: ${slot.label} (${slot.startTime}-${slot.endTime}) - Global: ${slot.isGlobal}, Sort: ${slot.sortOrder}`);
         });
         
         console.log(`🔧 BCT-3-AB SLOT MAPPING CHECK:`);
         const usedSlots = [...new Set(routineSlots.map(s => s.slotIndex))];
         usedSlots.forEach(slotIndex => {
-          const timeSlot = timeSlots.find(ts => ts._id === slotIndex);
+          const timeSlot = deduplicatedTimeSlots.find(ts => ts._id === slotIndex);
           if (timeSlot) {
             console.log(`  ✅ SlotIndex ${slotIndex} -> TimeSlot ${timeSlot.label} (${timeSlot.startTime}-${timeSlot.endTime})`);
           } else {
@@ -1067,7 +1118,7 @@ class UnifiedPDFService {
         section: section.toUpperCase()
       });
 
-      this.fillRoutineData(doc, routineSlots, timeSlots, 'class');
+      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'class');
 
       this._generateTeacherMappingTable(doc, routineSlots);
       this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
@@ -1116,22 +1167,21 @@ class UnifiedPDFService {
         return null;
       }
 
-      // FIXED: Get sections that teacher teaches in, then fetch relevant time slots
-      const sectionsTeaching = [...new Set(routineSlots.map(slot => slot.section))];
+      // FIXED: Get unique program-semester-section combinations that teacher teaches in
+      const contextCombinations = [...new Set(routineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
       
-      // Get time slots for all sections this teacher teaches in
-      const sectionFilters = sectionsTeaching.map(sec => {
-        const parts = sec.split('-');
-        if (parts.length >= 3) {
-          return {
-            isGlobal: false,
-            programCode: parts[0],
-            semester: parseInt(parts[1]),
-            section: parts[2].toUpperCase()
-          };
-        }
-        return null;
-      }).filter(Boolean);
+      // Get time slots for all context combinations this teacher teaches in
+      const sectionFilters = contextCombinations.map(combo => {
+        const [programCode, semester, section] = combo.split('-');
+        return {
+          isGlobal: false,
+          programCode: programCode.toUpperCase(),
+          semester: parseInt(semester),
+          section: section.toUpperCase()
+        };
+      });
       
       const timeSlots = await TimeSlot.find({
         $or: [
@@ -1143,6 +1193,13 @@ class UnifiedPDFService {
           ...sectionFilters
         ]
       }).sort({ sortOrder: 1 });
+
+      // CRITICAL FIX: Deduplicate time slots to remove duplicates
+      const deduplicatedTimeSlots = this._deduplicateTimeSlots(timeSlots);
+
+      console.log(`📊 Teacher schedule: Found ${timeSlots.length} time slots (global + context-specific) -> ${deduplicatedTimeSlots.length} after deduplication for teacher ${teacherName}`);
+      console.log(`🎯 Context combinations: ${contextCombinations.join(', ')}`);
+      
       const customSize = this._getCustomPageSize('a4');
       
       const doc = new PDFDocument({
@@ -1160,7 +1217,7 @@ class UnifiedPDFService {
         teacherName: teacherName
       });
 
-      this.fillRoutineData(doc, routineSlots, timeSlots, 'teacher', null, teacherName);
+      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacherName);
       this._generatePDFFooter(doc, `Teacher Schedule - ${teacherName || 'Teacher'}`);
 
       return new Promise((resolve) => {
@@ -1206,22 +1263,21 @@ class UnifiedPDFService {
         return null;
       }
 
-      // FIXED: Get sections using this room, then fetch relevant time slots
-      const sectionsUsing = [...new Set(routineSlots.map(slot => slot.section))];
+      // FIXED: Get unique program-semester-section combinations using this room
+      const contextCombinations = [...new Set(routineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
       
-      // Get time slots for all sections using this room
-      const sectionFilters = sectionsUsing.map(sec => {
-        const parts = sec.split('-');
-        if (parts.length >= 3) {
-          return {
-            isGlobal: false,
-            programCode: parts[0],
-            semester: parseInt(parts[1]),
-            section: parts[2].toUpperCase()
-          };
-        }
-        return null;
-      }).filter(Boolean);
+      // Get time slots for all context combinations using this room
+      const sectionFilters = contextCombinations.map(combo => {
+        const [programCode, semester, section] = combo.split('-');
+        return {
+          isGlobal: false,
+          programCode: programCode.toUpperCase(),
+          semester: parseInt(semester),
+          section: section.toUpperCase()
+        };
+      });
       
       const timeSlots = await TimeSlot.find({
         $or: [
@@ -1233,6 +1289,13 @@ class UnifiedPDFService {
           ...sectionFilters
         ]
       }).sort({ sortOrder: 1 });
+
+      // CRITICAL FIX: Deduplicate time slots to remove duplicates
+      const deduplicatedTimeSlots = this._deduplicateTimeSlots(timeSlots);
+
+      console.log(`📊 Room schedule: Found ${timeSlots.length} time slots (global + context-specific) -> ${deduplicatedTimeSlots.length} after deduplication for room ${roomName}`);
+      console.log(`🎯 Context combinations: ${contextCombinations.join(', ')}`);
+      
       const customSize = this._getCustomPageSize('a4');
       
       const doc = new PDFDocument({
@@ -1250,7 +1313,7 @@ class UnifiedPDFService {
         roomName: roomName
       });
 
-      this.fillRoutineData(doc, routineSlots, timeSlots, 'room', roomName);
+      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'room', roomName);
       this._generatePDFFooter(doc, `Room Schedule - ${roomName || 'Room'}`);
 
       return new Promise((resolve) => {
@@ -1393,22 +1456,21 @@ class UnifiedPDFService {
         return null;
       }
 
-      // Get all time slots for teacher schedules (all sections they teach in)
+      // Get all time slots for teacher schedules - get unique program-semester-section combinations
       const allRoutineSlots = await RoutineSlot.find(routineFilter);
-      const sectionsWithTeachers = [...new Set(allRoutineSlots.map(slot => slot.section))];
+      const contextCombinations = [...new Set(allRoutineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
       
-      const sectionFilters = sectionsWithTeachers.map(sec => {
-        const parts = sec.split('-');
-        if (parts.length >= 3) {
-          return {
-            isGlobal: false,
-            programCode: parts[0],
-            semester: parseInt(parts[1]),
-            section: parts[2].toUpperCase()
-          };
-        }
-        return null;
-      }).filter(Boolean);
+      const sectionFilters = contextCombinations.map(combo => {
+        const [programCode, semester, section] = combo.split('-');
+        return {
+          isGlobal: false,
+          programCode: programCode.toUpperCase(),
+          semester: parseInt(semester),
+          section: section.toUpperCase()
+        };
+      });
       
       const timeSlots = await TimeSlot.find({
         $or: [
@@ -1416,10 +1478,17 @@ class UnifiedPDFService {
           { isGlobal: true },
           { isGlobal: { $exists: false } }, // Legacy time slots
           { isGlobal: null },
-          // Include time slots for all sections where teachers teach
+          // Include time slots for all sections this teacher teaches in
           ...sectionFilters
         ]
       }).sort({ sortOrder: 1 });
+
+      // CRITICAL FIX: Deduplicate time slots to remove duplicates
+      const deduplicatedTimeSlots = this._deduplicateTimeSlots(timeSlots);
+
+      console.log(`📊 All teachers schedules: Found ${timeSlots.length} time slots (global + context-specific) -> ${deduplicatedTimeSlots.length} after deduplication`);
+      console.log(`🎯 Context combinations: ${contextCombinations.join(', ')}`);
+      
       const customSize = this._getCustomPageSize('a4');
       
       const doc = new PDFDocument({
@@ -1465,7 +1534,7 @@ class UnifiedPDFService {
           teacherName: teacher.fullName
         });
 
-        this.fillRoutineData(doc, routineSlots, timeSlots, 'teacher', null, teacher.fullName);
+        this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacher.fullName);
         this._generatePDFFooter(doc, `Teacher Schedule - ${teacher.fullName}`);
       }
 
@@ -1511,7 +1580,39 @@ class UnifiedPDFService {
         return null;
       }
 
-      const timeSlots = await TimeSlot.find().sort({ sortOrder: 1 });
+      // Get context-specific time slots for all rooms
+      const allRoutineSlots = await RoutineSlot.find(routineFilter);
+      const contextCombinations = [...new Set(allRoutineSlots.map(slot => 
+        `${slot.programCode}-${slot.semester}-${slot.section}`
+      ))];
+      
+      const sectionFilters = contextCombinations.map(combo => {
+        const [programCode, semester, section] = combo.split('-');
+        return {
+          isGlobal: false,
+          programCode: programCode.toUpperCase(),
+          semester: parseInt(semester),
+          section: section.toUpperCase()
+        };
+      });
+      
+      const timeSlots = await TimeSlot.find({
+        $or: [
+          // Include global time slots
+          { isGlobal: true },
+          { isGlobal: { $exists: false } }, // Legacy time slots
+          { isGlobal: null },
+          // Include time slots for all context combinations using rooms
+          ...sectionFilters
+        ]
+      }).sort({ sortOrder: 1 });
+
+      // CRITICAL FIX: Deduplicate time slots to remove duplicates
+      const deduplicatedTimeSlots = this._deduplicateTimeSlots(timeSlots);
+
+      console.log(`📊 All rooms schedules: Found ${timeSlots.length} time slots (global + context-specific) -> ${deduplicatedTimeSlots.length} after deduplication`);
+      console.log(`🎯 Context combinations: ${contextCombinations.join(', ')}`);
+      
       const customSize = this._getCustomPageSize('a4');
       
       const doc = new PDFDocument({
@@ -1556,7 +1657,7 @@ class UnifiedPDFService {
           roomName: room.name
         });
 
-        this.fillRoutineData(doc, routineSlots, timeSlots, 'room', room.name);
+        this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'room', room.name);
         this._generatePDFFooter(doc, `Room Schedule - ${room.name}`);
       }
 
@@ -1757,6 +1858,7 @@ class UnifiedPDFService {
                   entityMap.set(id.toString(), value);
                 }
               });
+
             } else {
               const id = idExtractor(entities);
               const value = valueExtractor(entities);
@@ -2049,9 +2151,9 @@ class UnifiedPDFService {
    */
   _getClassTypeText(classType) {
     switch (classType) {
-      case 'L': return 'L';     // Short format for PDF compactness
-      case 'P': return 'P';     // Short format for PDF compactness  
-      case 'T': return 'T';     // Short format for PDF compactness
+      case 'L': return 'L';
+      case 'P': return 'P';
+      case 'T': return 'T';
       case 'BREAK': return 'Break';
       default: return classType || 'N/A';
     }
