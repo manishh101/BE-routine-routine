@@ -101,7 +101,7 @@ const seedElectricalTeachers = async () => {
     }
     
     const teachersData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    console.log(`📄 Loaded ${teachersData.length} teachers from teachers-electrical.json`);
+    console.log(`📄 Loaded ${teachersData.length} teachers from teacher-arch.json`);
     
     let updatedCount = 0;
     let createdCount = 0;
