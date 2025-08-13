@@ -91,7 +91,7 @@ const TeacherMeetingSchedulerContent = () => {
 
   const fetchTimeSlots = async () => {
     try {
-      const response = await timeSlotsAPI.getTimeSlots();
+      const response = await timeSlotsAPI.getTimeSlots({ includeGlobal: 'true' });
       // Handle different response structures
       let timeSlotsData = [];
       if (response.data?.data) {

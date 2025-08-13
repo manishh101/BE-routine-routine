@@ -139,7 +139,7 @@ const TeacherScheduleManagerContent = () => {
   // Fetch time slots from real API (same as routine manager)
   const { data: timeSlotsData } = useQuery({
     queryKey: ['timeSlots'],
-    queryFn: () => timeSlotsAPI.getTimeSlots(),
+    queryFn: () => timeSlotsAPI.getTimeSlots({ includeAll: 'true', includeGlobal: 'true' }),
     staleTime: 5 * 60 * 1000,
   });
 

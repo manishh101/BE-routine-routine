@@ -45,7 +45,7 @@ const TeacherMeetingScheduler = () => {
 
   const fetchTimeSlots = async () => {
     try {
-      const response = await timeSlotsAPI.getTimeSlots();
+      const response = await timeSlotsAPI.getTimeSlots({ includeGlobal: 'true' });
       setTimeSlots(response.data?.data || []);
     } catch (err) {
       console.error('Error fetching time slots:', err);

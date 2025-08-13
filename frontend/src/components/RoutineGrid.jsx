@@ -240,19 +240,31 @@ const RoutineGrid = ({
     data: timeSlotsData, 
     isLoading: timeSlotsLoading 
   } = useQuery({
-    queryKey: ['timeSlots', programCode, semester, section],
+    queryKey: ['timeSlots', teacherViewMode, isRoomViewMode, programCode, semester, section],
     queryFn: async () => {
       if (demoMode) {
         return getDemoTimeSlots();
       } else {
         // Fetch both global and context-specific time slots
         const params = {};
-        if (programCode && semester && section) {
+        
+        // For teacher and room view modes, fetch ALL time slots across all contexts
+        // because teachers/rooms might be used in multiple programs/semesters/sections
+        if (teacherViewMode || isRoomViewMode) {
+          // Fetch all time slots (both global and context-specific)
+          params.includeAll = 'true'; // This will fetch all time slots regardless of context
+          params.includeGlobal = 'true';
+        } else if (programCode && semester && section) {
+          // For class routine view, fetch context-specific + global time slots
           params.programCode = programCode;
           params.semester = semester;
           params.section = section;
           params.includeGlobal = 'true';
+        } else {
+          // Fallback: fetch only global time slots
+          params.includeGlobal = 'true';
         }
+        
         return timeSlotsAPI.getTimeSlots(params);
       }
     },
@@ -380,8 +392,64 @@ const RoutineGrid = ({
     // Make sure all time slots are properly sorted
     const sortedSlots = slots.sort((a, b) => a.sortOrder - b.sortOrder);
     
+    // For teacher/room view modes, deduplicate and filter time slots
+    if (teacherViewMode || isRoomViewMode) {
+      const deduplicatedSlots = [];
+      const seenTimeRanges = new Set();
+      
+      for (const slot of sortedSlots) {
+        const timeRange = `${slot.startTime}-${slot.endTime}`;
+        if (!seenTimeRanges.has(timeRange)) {
+          seenTimeRanges.add(timeRange);
+          deduplicatedSlots.push(slot);
+        }
+      }
+      
+      return deduplicatedSlots;
+    }
+    
     return sortedSlots;
-  }, [timeSlotsData, demoMode]);
+  }, [timeSlotsData, demoMode, teacherViewMode, isRoomViewMode]);
+
+  // Filter time slots to only show those with actual classes (for teacher/room views)
+  const filteredTimeSlots = useMemo(() => {
+    if (!teacherViewMode && !isRoomViewMode) {
+      return timeSlots; // For class view, show all time slots
+    }
+    
+    if (demoMode || !routine || Object.keys(routine).length === 0) {
+      return timeSlots; // No filtering if no routine data
+    }
+    
+    // Find which time slots actually have classes
+    const usedSlotIds = new Set();
+    
+    // Check all days and slots in the routine
+    Object.values(routine).forEach(dayData => {
+      if (dayData && typeof dayData === 'object') {
+        Object.keys(dayData).forEach(slotId => {
+          const slotData = dayData[slotId];
+          if (slotData) {
+            // Convert slotId to number for comparison
+            usedSlotIds.add(parseInt(slotId));
+          }
+        });
+      }
+    });
+    
+    // Filter time slots to only include:
+    // 1. Global time slots (always show)
+    // 2. Context-specific time slots that have classes assigned
+    return timeSlots.filter(slot => {
+      // Always include global time slots
+      if (slot.isGlobal) {
+        return true;
+      }
+      
+      // Include context-specific time slots only if they have classes
+      return usedSlotIds.has(slot._id);
+    });
+  }, [timeSlots, routine, teacherViewMode, isRoomViewMode, demoMode]);
 
   // Transform routine data into 2D grid structure for easier rendering
   const routineGridData = useMemo(() => {
@@ -389,14 +457,14 @@ const RoutineGrid = ({
       return routine;
     }
     
-    // Create empty grid structure with normalized time slot IDs
-    const emptyGrid = createRoutineGrid(timeSlots);
+    // Create empty grid structure with filtered time slot IDs
+    const emptyGrid = createRoutineGrid(filteredTimeSlots);
     
     // Populate grid with actual routine data
     const populatedGrid = populateRoutineGrid(emptyGrid, routine);
     
     return populatedGrid;
-  }, [routine, timeSlots, demoMode]);
+  }, [routine, filteredTimeSlots, demoMode]);
 
   // Helper function to generate lab group display labels
   const getLabGroupLabel = (classData, group = null) => {
@@ -1700,7 +1768,7 @@ const RoutineGrid = ({
                     Days / Time
                   </div>
                 </th>
-                {timeSlots.map((timeSlot, index) => (
+                {filteredTimeSlots.map((timeSlot, index) => (
                   <th 
                     key={`header-${timeSlot._id}-${index}`}
                     className="time-slot-header" 
@@ -1712,7 +1780,7 @@ const RoutineGrid = ({
                       backgroundColor: timeSlot.isBreak ? '#ffffff' : '#ffffff',
                       fontWeight: '600',
                       textAlign: 'center',
-                      width: `calc((100% - 150px) / ${timeSlots.length})`,
+                      width: `calc((100% - 150px) / ${filteredTimeSlots.length})`,
                       minWidth: '160px',
                       fontSize: '12px',
                       color: '#333',
@@ -1818,7 +1886,7 @@ const RoutineGrid = ({
                         {dayName}
                       </div>
                     </td>
-                    {timeSlots.map((timeSlot, timeSlotIndex) => {
+                    {filteredTimeSlots.map((timeSlot, timeSlotIndex) => {
                     // Use centralized utility for consistent ID handling
                     const slotId = normalizeTimeSlotId(timeSlot._id);
                     // Get class data using utility function

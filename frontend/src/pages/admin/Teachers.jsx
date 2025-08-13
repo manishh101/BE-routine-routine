@@ -83,7 +83,7 @@ const Teachers = () => {
   // Fetch time slots for proper display
   const { data: timeSlotsData, isLoading: timeSlotsLoading } = useQuery({
     queryKey: ['timeSlots'],
-    queryFn: timeSlotsAPI.getTimeSlots,
+    queryFn: () => timeSlotsAPI.getTimeSlots({ includeAll: 'true', includeGlobal: 'true' }),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnMount: false,
     refetchOnWindowFocus: false

@@ -129,10 +129,38 @@ exports.createContextTimeSlot = async (req, res) => {
 // @access  Private
 exports.getTimeSlots = async (req, res) => {
   try {
-    const { dayType, category, programCode, semester, section, includeGlobal = 'true' } = req.query;
+    const { dayType, category, programCode, semester, section, includeGlobal = 'true', includeAll = 'false' } = req.query;
     
     // Build filter for context-specific or global time slots
     const filters = [];
+    
+    // If includeAll is true, fetch ALL time slots regardless of context
+    if (includeAll === 'true') {
+      // Fetch all time slots (both global and context-specific)
+      const allFilters = [];
+      
+      // Include global time slots
+      allFilters.push({ 
+        $or: [
+          { isGlobal: true },
+          { isGlobal: { $exists: false } }, // Legacy time slots without isGlobal field
+          { isGlobal: null }
+        ]
+      });
+      
+      // Include all context-specific time slots
+      allFilters.push({ isGlobal: false });
+      
+      const mainFilter = { $or: allFilters };
+      
+      // Add additional filters
+      if (dayType) mainFilter.dayType = dayType;
+      if (category) mainFilter.category = category;
+
+      const timeSlots = await TimeSlot.find(mainFilter).sort({ sortOrder: 1 });
+      res.json(timeSlots);
+      return;
+    }
     
     // Always include global time slots unless explicitly excluded
     if (includeGlobal === 'true') {
