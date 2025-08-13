@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { Modal, Form, DatePicker, message } from 'antd';
 import dayjs from 'dayjs';
 
-const ClassDateModal = ({ visible, onOk, onCancel, programCode, semester, section }) => {
+const ClassDateModal = ({ visible, onOk, onCancel, programCode, semester, section, exportType = 'class' }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
@@ -19,8 +19,17 @@ const ClassDateModal = ({ visible, onOk, onCancel, programCode, semester, sectio
       const startDate = values.startDate.format('YYYY-MM-DD');
       const endDate = values.endDate.format('YYYY-MM-DD');
       
-      // Call the onOk callback with the dates
-      await onOk({ startDate, endDate });
+      // Prepare data object
+      const data = { startDate, endDate };
+      
+      // Add authority information for teacher export
+      if (exportType === 'teacher') {
+        data.authorityName = values.authorityName;
+        data.designation = values.designation;
+      }
+      
+      // Call the onOk callback with the data
+      await onOk(data);
       
       form.resetFields();
     } catch (error) {
@@ -65,19 +74,21 @@ const ClassDateModal = ({ visible, onOk, onCancel, programCode, semester, sectio
 
   return (
     <Modal
-      title={`Class Schedule Dates - ${programCode} Semester ${semester} Section ${section}`}
+      title={`${exportType === 'teacher' ? 'Teacher Schedule Export Details' : 'Class Schedule Dates'} - ${programCode} Semester ${semester} Section ${section}`}
       open={visible}
       onOk={handleOk}
       onCancel={handleCancel}
       confirmLoading={loading}
       okText="Export PDF"
       cancelText="Cancel"
-      width={500}
+      width={600}
       destroyOnClose={true}
     >
       <div style={{ marginBottom: '16px', color: '#666' }}>
-        Please specify the class start and end dates for this routine. 
-        These dates will appear on the PDF schedule.
+        Please specify the class start and end dates for this routine.
+        {exportType === 'teacher' && ' Also provide authority information for the signature section.'}
+        <br />
+        These details will appear on the PDF schedule.
       </div>
       
       <Form
@@ -117,6 +128,41 @@ const ClassDateModal = ({ visible, onOk, onCancel, programCode, semester, sectio
             onChange={() => form.validateFields(['startDate'])}
           />
         </Form.Item>
+
+        {/* Authority Information for Teacher Export */}
+        {exportType === 'teacher' && (
+          <>
+            <Form.Item
+              name="authorityName"
+              label="Authority Name"
+              rules={[
+                { required: true, message: 'Please enter authority name' },
+                { min: 2, message: 'Authority name must be at least 2 characters' }
+              ]}
+            >
+              <input 
+                className="ant-input"
+                placeholder="Enter authority name (e.g., Dr. John Smith)"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #d9d9d9', borderRadius: '6px' }}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="designation"
+              label="Designation"
+              rules={[
+                { required: true, message: 'Please enter designation' },
+                { min: 2, message: 'Designation must be at least 2 characters' }
+              ]}
+            >
+              <input 
+                className="ant-input"
+                placeholder="Enter designation (e.g., Head of Department)"
+                style={{ width: '100%', padding: '8px 12px', border: '1px solid #d9d9d9', borderRadius: '6px' }}
+              />
+            </Form.Item>
+          </>
+        )}
       </Form>
     </Modal>
   );

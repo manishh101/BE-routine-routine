@@ -32,15 +32,15 @@ const TeacherPDFActions = ({
     setShowDateModal(true);
   };
 
-  // Handle Export with Dates
-  const handleExportWithDates = async ({ startDate, endDate }) => {
+  // Handle Export with Dates and Authority Info
+  const handleExportWithDates = async (data) => {
     setIsExporting(true);
     
     try {
       setShowDateModal(false);
-      console.log('🎯 Exporting teacher schedule to PDF:', { teacherId, teacherName, semesterGroup, startDate, endDate });
+      console.log('🎯 Exporting teacher schedule to PDF:', { teacherId, teacherName, semesterGroup, ...data });
       
-      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId, semesterGroup, { startDate, endDate });
+      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId, semesterGroup, data);
       
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
@@ -168,6 +168,7 @@ const TeacherPDFActions = ({
         programCode="TEACHER"
         semester="ALL"
         section={teacherName}
+        exportType="teacher"
       />
     </Space>
   );

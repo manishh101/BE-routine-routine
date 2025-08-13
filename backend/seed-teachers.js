@@ -94,14 +94,14 @@ const seedElectricalTeachers = async () => {
     console.log('🚀 Starting electrical teachers data seeding...');
     
     // Read the electrical teachers JSON file
-    const filePath = path.join(__dirname, 'dataJson', 'teacher-electronics.json');
+    const filePath = path.join(__dirname, 'dataJson', 'teacher-aero-mech.json');
     
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);
     }
     
     const teachersData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    console.log(`📄 Loaded ${teachersData.length} teachers from teacher-arch.json`);
+    console.log(`📄 Loaded ${teachersData.length} teachers from teacher-aero-mech.json`);
     
     let updatedCount = 0;
     let createdCount = 0;

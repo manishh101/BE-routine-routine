@@ -4159,7 +4159,7 @@ exports.getVacantTeachers = async (req, res) => {
 exports.exportTeacherScheduleToPDF = async (req, res) => {
   try {
     const { teacherId } = req.params;
-    const { academicYear, semesterGroup = 'all', startDate, endDate } = req.query; // Add startDate and endDate
+    const { academicYear, semesterGroup = 'all', startDate, endDate, authorityName, designation } = req.query; // Add authority parameters
 
     if (!teacherId) {
       return res.status(400).json({
@@ -4168,7 +4168,7 @@ exports.exportTeacherScheduleToPDF = async (req, res) => {
       });
     }
 
-    console.log(`📄 Generating teacher schedule PDF for: ${teacherId} (${semesterGroup} semester group)${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}`);
+    console.log(`📄 Generating teacher schedule PDF for: ${teacherId} (${semesterGroup} semester group)${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}${authorityName ? ` Authority: ${authorityName}` : ''}`);
 
     // Get teacher information
     const teacher = await Teacher.findById(teacherId);
@@ -4183,7 +4183,12 @@ exports.exportTeacherScheduleToPDF = async (req, res) => {
     // Use the working PDFRoutineService (same as class routine)
     const PDFRoutineService = require('../services/PDFRoutineService');
     const pdfService = new PDFRoutineService();
-    const pdfBuffer = await pdfService.generateTeacherSchedulePDF(teacherId, teacher.fullName, semesterGroup, { startDate, endDate }); // Pass dates
+    const pdfBuffer = await pdfService.generateTeacherSchedulePDF(teacherId, teacher.fullName, semesterGroup, { 
+      startDate, 
+      endDate, 
+      authorityName, 
+      designation 
+    }); // Pass all additional data
 
     // Set response headers
     const fileName = `${teacher.fullName.replace(/[^a-zA-Z0-9]/g, '_')}_Schedule_${new Date().toISOString().split('T')[0]}.pdf`;

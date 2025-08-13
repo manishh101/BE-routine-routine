@@ -356,6 +356,8 @@ export const teachersAPI = {
     if (semesterGroup && semesterGroup !== 'all') params.append('semesterGroup', semesterGroup);
     if (options.startDate) params.append('startDate', options.startDate);
     if (options.endDate) params.append('endDate', options.endDate);
+    if (options.authorityName) params.append('authorityName', options.authorityName);
+    if (options.designation) params.append('designation', options.designation);
     
     const queryString = params.toString();
     const url = `/routines/teacher/${id}/export-pdf${queryString ? '?' + queryString : ''}`;

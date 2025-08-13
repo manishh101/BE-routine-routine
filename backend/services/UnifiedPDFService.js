@@ -194,7 +194,8 @@ class UnifiedPDFService {
     const dayColumnWidth = 55;
     const timeColumnWidth = (totalWidth - dayColumnWidth) / timeSlots.length;
     const headerRowHeight = hasWinterTiming ? 30 : 20; // Taller headers when showing winter timing
-    const rowHeight = 60; // Standard row height
+    // Use smaller row height for teacher routines
+    const rowHeight = pdfType === 'teacher' ? 50 : 55; // Smaller height for teacher routines
 
     // FIXED: Create routine lookup map using correct time slot mapping
     const routineMap = this._createRoutineMap(routineSlots, timeSlots);
@@ -543,10 +544,8 @@ class UnifiedPDFService {
     );
     
     const roomName = pdfType === 'room' ? '' : (
-      firstSlot.classType === 'P' ? (
-        firstSlot.roomName_display || 
-        firstSlot.roomId?.name || 'TBA'
-      ) : ''
+      firstSlot.roomName_display || 
+      firstSlot.roomId?.name || 'TBA'
     );
     
     // Enhanced lab group indicator with section awareness (from OLD service)
@@ -655,7 +654,7 @@ class UnifiedPDFService {
           slot.display?.teacherShortNames?.join(', ') || 
           slot.teacherId?.name || slot.teacherName_display || 'TBA'
         ),
-        room: pdfType === 'room' ? '' : (slot.classType === 'P' ? roomName : ''),
+        room: pdfType === 'room' ? '' : roomName,
         programCode: slot.programCode,
         semester: slot.semester,
         slot: slot
@@ -703,7 +702,7 @@ class UnifiedPDFService {
         const labGroupInfo = group.labGroup ? `(Group ${group.labGroup}) ` : '';
         
         if (pdfType === 'teacher') {
-          return group.room ? `${labGroupInfo}${subject.subjectName} [${classType}]\n${group.room}` : `${labGroupInfo}${subject.subjectName} [${classType}]`;
+          return (group.room && group.room !== 'TBA') ? `${labGroupInfo}${subject.subjectName} [${classType}]\n${group.room}` : `${labGroupInfo}${subject.subjectName} [${classType}]`;
         } else if (pdfType === 'room') {
           const section = `${group.programCode}-${group.semester}${subject.section}`;
           const sectionTeacherLine = group.teacher ? `${section} | ${group.teacher}` : section;
@@ -722,7 +721,7 @@ class UnifiedPDFService {
           : 'Multiple Groups';
         
         if (pdfType === 'teacher') {
-          const rooms = uniqueRooms.join(' / ');
+          const rooms = uniqueRooms.filter(room => room && room !== 'TBA').join(' / ');
           return rooms ? `(${groupLabels}) ${subject.subjectName} [${classType}]\n${rooms}` : `(${groupLabels}) ${subject.subjectName} [${classType}]`;
         } else if (pdfType === 'room') {
           const section = `${sortedGroups[0].programCode}-${sortedGroups[0].semester}${subject.section}`;
@@ -763,15 +762,13 @@ class UnifiedPDFService {
     
     // Enhanced room name extraction (from OLD service)
     const roomDisplayName = pdfType === 'room' ? '' : (
-      slot.classType === 'P' ? (
-        slot.roomName_display || 
-        slot.roomId?.name || 
-        slot.display?.roomName || 
-        slot.room?.name ||
-        slot.roomName ||
-        slot.roomId ||
-        'TBA'
-      ) : ''
+      slot.roomName_display || 
+      slot.roomId?.name || 
+      slot.display?.roomName || 
+      slot.room?.name ||
+      slot.roomName ||
+      slot.roomId ||
+      'TBA'
     );
     
     // Enhanced lab group indicator with section awareness (from OLD service)
@@ -832,7 +829,7 @@ class UnifiedPDFService {
     }
     
     if (pdfType === 'teacher') {
-      return roomDisplayName ? `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${roomDisplayName}` : `${wrappedSubjectName}${labGroupIndicator} [${classType}]`;
+      return (roomDisplayName && roomDisplayName !== 'TBA') ? `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${roomDisplayName}` : `${wrappedSubjectName}${labGroupIndicator} [${classType}]`;
     } else if (pdfType === 'room') {
       const section = `${slot.programCode}-${slot.semester}-${slot.section}`;
       if (slot.classType === 'P') {
@@ -946,6 +943,166 @@ class UnifiedPDFService {
   }
 
   /**
+   * Generate specialized PDF header for teacher schedules
+   * Displays teacher name and programs on the left, total classes in the middle, class dates on the right
+   */
+  _generateTeacherPDFHeader(doc, options = {}) {
+    const { programCode, programName, semester, section, title, subtitle, teacherName, totalClasses, programsString, startDate, endDate } = options;
+    
+    // Store current position for positioning elements
+    const rightMargin = doc.page.width - 50;
+    const leftMargin = 50;
+    const pageWidth = doc.page.width - 100;
+    const centerX = leftMargin + (pageWidth / 2);
+    
+    doc.moveDown(0.5);
+    
+    // University header (centered)
+    doc.fontSize(10).font('Helvetica-Bold')
+       .fillColor('#000000')
+       .text('Tribhuvan University', leftMargin, doc.y, { 
+         align: 'center',
+         width: pageWidth 
+       });
+    
+    doc.moveDown(0.3);
+    
+    doc.fontSize(8).font('Helvetica-Bold')
+       .text('Department of Electronics and Computer Engineering', leftMargin, doc.y, { 
+         align: 'center',
+         width: pageWidth 
+       });
+    
+    doc.fontSize(6).font('Helvetica')
+       .text('Pulchowk Campus, Institute of Engineering', leftMargin, doc.y, { 
+         align: 'center',
+         width: pageWidth 
+       });
+    
+    doc.moveDown(0.3);
+    
+    // Title (centered)
+    if (title) {
+      doc.fontSize(8).font('Helvetica-Bold')
+         .text(title, leftMargin, doc.y, { 
+           align: 'center',
+           width: pageWidth 
+         });
+    }
+    
+    if (subtitle) {
+      doc.fontSize(6).font('Helvetica')
+         .text(subtitle, leftMargin, doc.y, { 
+           align: 'center',
+           width: pageWidth 
+         });
+    }
+    
+    doc.moveDown(0.5);
+    
+    // Now add the three-part header above the grid
+    const headerStartY = doc.y;
+    
+    // Left part: Teacher name and programs
+    if (teacherName && programsString) {
+      doc.fontSize(8).font('Helvetica-Bold')
+         .fillColor('#000000')
+         .text(`Teacher: ${teacherName}`, leftMargin, headerStartY);
+      
+      doc.fontSize(7).font('Helvetica')
+         .fillColor('#666666')
+         .text(`Programs: ${programsString}`, leftMargin, headerStartY + 12);
+    }
+    
+    // Middle part: Total classes
+    if (totalClasses) {
+      doc.fontSize(8).font('Helvetica-Bold')
+         .fillColor('#000000')
+         .text('Total Classes:', centerX - 40, headerStartY, { align: 'center', width: 80 });
+      
+      doc.fontSize(10).font('Helvetica-Bold')
+         .fillColor('#333333')
+         .text(totalClasses.toString(), centerX - 20, headerStartY + 12, { align: 'center', width: 40 });
+    }
+    
+    // Right part: Class dates
+    if (startDate && endDate) {
+      doc.fontSize(7).font('Helvetica-Bold')
+         .fillColor('#333333')
+         .text('Class Period:', rightMargin - 120, headerStartY, { 
+           align: 'right',
+           width: 120
+         });
+      
+      doc.fontSize(6).font('Helvetica')
+         .fillColor('#666666')
+         .text(`${startDate} to ${endDate}`, rightMargin - 120, headerStartY + 12, { 
+           align: 'right',
+           width: 120
+         });
+    }
+    
+    // Reset color and move down for the grid
+    doc.fillColor('#000000');
+    doc.y = Math.max(headerStartY + 28, doc.y);
+    doc.moveDown(0.3);
+  }
+
+  /**
+   * Generate specialized PDF footer for teacher schedules
+   * Displays authority information in the bottom right
+   */
+  _generateTeacherPDFFooter(doc, scheduleType, authorityName, designation) {
+    if (!authorityName || !designation) {
+      return; // No footer if authority info not provided
+    }
+    
+    // Move to very bottom of page, leaving more space for signature
+    const bottomMargin = 20;
+    const footerY = doc.page.height - bottomMargin - 100; // Reserve 100px for footer content with signature
+    const rightMargin = doc.page.width - 50;
+    
+    // Ensure we're at the right position
+    doc.y = footerY;
+    
+    // Add signature dots line - longer line with more dots
+    const signatureLineY = footerY;
+    const dots = '.'.repeat(50); // Create a longer line of dots for signature
+    
+    doc.fontSize(8).font('Helvetica')
+       .fillColor('#666666')
+       .text(dots, rightMargin - 160, signatureLineY, {
+         align: 'right',
+         width: 160
+       });
+    
+    // Add authority information below the signature line with more spacing
+    doc.fontSize(8).font('Helvetica-Bold')
+       .fillColor('#333333')
+       .text(authorityName, rightMargin - 160, signatureLineY + 18, {
+         align: 'right',
+         width: 160
+       });
+    
+    doc.fontSize(7).font('Helvetica')
+       .fillColor('#666666')
+       .text(designation, rightMargin - 160, signatureLineY + 32, {
+         align: 'right',
+         width: 160
+       });
+    
+    doc.fontSize(7).font('Helvetica')
+       .fillColor('#666666')
+       .text('Department of Electronics and Computer Engineering', rightMargin - 160, signatureLineY + 46, {
+         align: 'right',
+         width: 160
+       });
+    
+    // Reset color
+    doc.fillColor('#000000');
+  }
+
+  /**
    * Generate room lookup table for teacher schedule PDFs
    * Based on the hardcoded lookup table provided in the photo
    */
@@ -977,10 +1134,10 @@ class UnifiedPDFService {
       'COMPUTER LAB 5 -> lab in Library building'
     ];
 
-    const rowsPerColumn = 7;
+    const rowsPerColumn = 5;
     const rowHeight = 12;
     const columnWidth = 190;
-    const columnSpacing = -60;
+    const columnSpacing = -25;
     const startX = doc.page.margins.left;
     const startY = doc.y;
     
@@ -1143,8 +1300,8 @@ class UnifiedPDFService {
    */
   async generateTeacherSchedulePDF(teacherId, teacherName, semesterFilter = 'all', options = {}) {
     try {
-      const { startDate, endDate } = options;
-      console.log(`📄 Generating teacher schedule PDF for ${teacherName || teacherId}${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}`);
+      const { startDate, endDate, authorityName, designation } = options;
+      console.log(`📄 Generating teacher schedule PDF for ${teacherName || teacherId}${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}${authorityName ? ` Authority: ${authorityName}` : ''}`);
 
       const query = {
         teacherIds: teacherId,
@@ -1168,7 +1325,14 @@ class UnifiedPDFService {
         return null;
       }
 
-      // FIXED: Get unique program-semester-section combinations that teacher teaches in
+      // Calculate total classes and get unique programs
+      const totalClasses = routineSlots.length;
+      const uniquePrograms = [...new Set(routineSlots.map(slot => slot.programCode))].sort();
+      const programsString = uniquePrograms.join(' ');
+      
+      console.log(`📊 Teacher stats: ${totalClasses} classes, Programs: ${programsString}`);
+
+      // Get unique program-semester-section combinations that teacher teaches in
       const contextCombinations = [...new Set(routineSlots.map(slot => 
         `${slot.programCode}-${slot.semester}-${slot.section}`
       ))];
@@ -1195,7 +1359,7 @@ class UnifiedPDFService {
         ]
       }).sort({ sortOrder: 1 });
 
-      // CRITICAL FIX: Deduplicate time slots to remove duplicates
+      // Deduplicate time slots to remove duplicates
       const deduplicatedTimeSlots = this._deduplicateTimeSlots(timeSlots);
 
       console.log(`📊 Teacher schedule: Found ${timeSlots.length} time slots (global + context-specific) -> ${deduplicatedTimeSlots.length} after deduplication for teacher ${teacherName}`);
@@ -1212,17 +1376,19 @@ class UnifiedPDFService {
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
 
-      this._generatePDFHeader(doc, {
+      this._generateTeacherPDFHeader(doc, {
         title: `Teacher Schedule - ${teacherName || 'Teacher'}`,
         subtitle: `Weekly Schedule`,
         teacherName: teacherName,
+        totalClasses: totalClasses,
+        programsString: programsString,
         startDate,
         endDate
       });
 
       this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacherName, null);
       this._generateRoomLookupTable(doc);
-      this._generatePDFFooter(doc, `Teacher Schedule - ${teacherName || 'Teacher'}`);
+      this._generateTeacherPDFFooter(doc, `Teacher Schedule - ${teacherName || 'Teacher'}`, authorityName, designation);
 
       return new Promise((resolve) => {
         doc.on('end', () => {
