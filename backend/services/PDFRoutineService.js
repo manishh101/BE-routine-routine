@@ -18,24 +18,24 @@ class PDFRoutineService {
    * Generate PDF for class schedule (program/semester/section)
    * FIXED: Now uses correct time slot mapping
    */
-  async generateClassSchedulePDF(programCode, semester, section) {
-    return await this.unifiedService.generateClassSchedulePDF(programCode, semester, section);
+  async generateClassSchedulePDF(programCode, semester, section, options = {}) {
+    return await this.unifiedService.generateClassSchedulePDF(programCode, semester, section, options);
   }
 
   /**
    * Generate PDF for teacher schedule
    * FIXED: Now uses correct time slot mapping
    */
-  async generateTeacherSchedulePDF(teacherId, teacherName, semesterFilter = 'all') {
-    return await this.unifiedService.generateTeacherSchedulePDF(teacherId, teacherName, semesterFilter);
+  async generateTeacherSchedulePDF(teacherId, teacherName, semesterFilter = 'all', options = {}) {
+    return await this.unifiedService.generateTeacherSchedulePDF(teacherId, teacherName, semesterFilter, options);
   }
 
   /**
    * Generate PDF for room schedule
    * FIXED: Now uses correct time slot mapping
    */
-  async generateRoomSchedulePDF(roomId, roomName, semesterFilter = 'all') {
-    return await this.unifiedService.generateRoomSchedulePDF(roomId, roomName, semesterFilter);
+  async generateRoomSchedulePDF(roomId, roomName, semesterFilter = 'all', options = {}) {
+    return await this.unifiedService.generateRoomSchedulePDF(roomId, roomName, semesterFilter, options);
   }
 
   /**

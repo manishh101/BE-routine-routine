@@ -1833,19 +1833,20 @@ exports.checkRoomAvailability = async (req, res) => {
 exports.exportRoutineToPDF = async (req, res) => {
   try {
     const { programCode, semester, section } = req.params;
-    const { format = 'download' } = req.query; // 'download' or 'inline'
+    const { format = 'download', startDate, endDate } = req.query; // Add startDate and endDate from query
     
-    console.log(`📄 PDF export requested: ${programCode}-${semester}-${section}, format: ${format}`);
+    console.log(`📄 PDF export requested: ${programCode}-${semester}-${section}, format: ${format}, dates: ${startDate} to ${endDate}`);
 
     // Import PDF service
     const PDFRoutineService = require('../services/PDFRoutineService');
 
-    // Generate PDF buffer for the specific program/semester/section
+    // Generate PDF buffer for the specific program/semester/section with dates
     const pdfService = new PDFRoutineService();
     const pdfBuffer = await pdfService.generateClassSchedulePDF(
       programCode.toUpperCase(),
       parseInt(semester),
-      section.toUpperCase()
+      section.toUpperCase(),
+      { startDate, endDate } // Pass dates to PDF service
     );
 
     if (!pdfBuffer) {
@@ -4158,7 +4159,7 @@ exports.getVacantTeachers = async (req, res) => {
 exports.exportTeacherScheduleToPDF = async (req, res) => {
   try {
     const { teacherId } = req.params;
-    const { academicYear, semesterGroup = 'all' } = req.query;
+    const { academicYear, semesterGroup = 'all', startDate, endDate } = req.query; // Add startDate and endDate
 
     if (!teacherId) {
       return res.status(400).json({
@@ -4167,7 +4168,7 @@ exports.exportTeacherScheduleToPDF = async (req, res) => {
       });
     }
 
-    console.log(`📄 Generating teacher schedule PDF for: ${teacherId} (${semesterGroup} semester group)`);
+    console.log(`📄 Generating teacher schedule PDF for: ${teacherId} (${semesterGroup} semester group)${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}`);
 
     // Get teacher information
     const teacher = await Teacher.findById(teacherId);
@@ -4182,7 +4183,7 @@ exports.exportTeacherScheduleToPDF = async (req, res) => {
     // Use the working PDFRoutineService (same as class routine)
     const PDFRoutineService = require('../services/PDFRoutineService');
     const pdfService = new PDFRoutineService();
-    const pdfBuffer = await pdfService.generateTeacherSchedulePDF(teacherId, teacher.fullName, semesterGroup);
+    const pdfBuffer = await pdfService.generateTeacherSchedulePDF(teacherId, teacher.fullName, semesterGroup, { startDate, endDate }); // Pass dates
 
     // Set response headers
     const fileName = `${teacher.fullName.replace(/[^a-zA-Z0-9]/g, '_')}_Schedule_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -4248,7 +4249,7 @@ exports.exportAllTeachersSchedulesToPDF = async (req, res) => {
 exports.exportRoomScheduleToPDF = async (req, res) => {
   try {
     const { roomId } = req.params;
-    const { academicYear, semesterGroup } = req.query;
+    const { academicYear, semesterGroup, startDate, endDate } = req.query; // Add startDate and endDate
 
     if (!roomId) {
       return res.status(400).json({
@@ -4257,7 +4258,7 @@ exports.exportRoomScheduleToPDF = async (req, res) => {
       });
     }
 
-    console.log(`📄 Generating room schedule PDF for: ${roomId}, semesterGroup: ${semesterGroup || 'all'}`);
+    console.log(`📄 Generating room schedule PDF for: ${roomId}, semesterGroup: ${semesterGroup || 'all'}${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}`);
 
     // Get room information
     const room = await Room.findById(roomId);
@@ -4272,7 +4273,7 @@ exports.exportRoomScheduleToPDF = async (req, res) => {
     // Use the working PDFRoutineService (same as class routine)
     const PDFRoutineService = require('../services/PDFRoutineService');
     const pdfService = new PDFRoutineService();
-    const pdfBuffer = await pdfService.generateRoomSchedulePDF(roomId, room.name, semesterGroup || 'all');
+    const pdfBuffer = await pdfService.generateRoomSchedulePDF(roomId, room.name, semesterGroup || 'all', { startDate, endDate }); // Pass dates
 
     // Set response headers
     const fileName = `${room.name.replace(/[^a-zA-Z0-9]/g, '_')}_Schedule_${new Date().toISOString().split('T')[0]}.pdf`;

@@ -94,7 +94,7 @@ const seedElectricalTeachers = async () => {
     console.log('🚀 Starting electrical teachers data seeding...');
     
     // Read the electrical teachers JSON file
-    const filePath = path.join(__dirname, 'dataJson', 'teachers-electrical.json');
+    const filePath = path.join(__dirname, 'dataJson', 'teacher-electronics.json');
     
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);

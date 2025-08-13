@@ -858,34 +858,81 @@ class UnifiedPDFService {
    * Generate PDF header
    */
   _generatePDFHeader(doc, options = {}) {
-    const { programCode, programName, semester, section, title, subtitle, roomName, teacherName } = options;
+    const { programCode, programName, semester, section, title, subtitle, roomName, teacherName, startDate, endDate } = options;
+    
+    // Store current position for class dates
+    const rightMargin = doc.page.width - 50;
+    const leftMargin = 50;
+    const pageWidth = doc.page.width - 100;
     
     doc.moveDown(0.5);
     
     doc.fontSize(10).font('Helvetica-Bold')
-       .text('Tribhuvan University', { align: 'center' });
+       .text('Tribhuvan University', leftMargin, doc.y, { 
+         align: 'center',
+         width: pageWidth 
+       });
     
     doc.moveDown(0.3);
     
     doc.fontSize(8).font('Helvetica-Bold')
-       .text('Department of Electronics and Computer Engineering', { align: 'center' });
+       .text('Department of Electronics and Computer Engineering', leftMargin, doc.y, { 
+         align: 'center',
+         width: pageWidth 
+       });
     
     doc.fontSize(6).font('Helvetica')
-       .text('Pulchowk Campus, Institute of Engineering', { align: 'center' });
+       .text('Pulchowk Campus, Institute of Engineering', leftMargin, doc.y, { 
+         align: 'center',
+         width: pageWidth 
+       });
     
     doc.moveDown(0.3);
     
     if (title) {
       doc.fontSize(8).font('Helvetica-Bold')
-         .text(title, { align: 'center' });
+         .text(title, leftMargin, doc.y, { 
+           align: 'center',
+           width: pageWidth 
+         });
     } else if (programCode) {
       doc.fontSize(8).font('Helvetica-Bold')
-         .text(`${programCode} - ${programName || 'Program'}`, { align: 'center' });
+         .text(`${programCode} - ${programName || 'Program'}`, leftMargin, doc.y, { 
+           align: 'center',
+           width: pageWidth 
+         });
     }
     
     if (subtitle) {
       doc.fontSize(6).font('Helvetica')
-         .text(subtitle, { align: 'center' });
+         .text(subtitle, leftMargin, doc.y, { 
+           align: 'center',
+           width: pageWidth 
+         });
+    }
+    
+    // Add class dates in the rightmost part above the grid
+    if (startDate && endDate) {
+      const currentY = doc.y;
+      
+      doc.fontSize(7).font('Helvetica-Bold')
+         .fillColor('#333333')
+         .text('Class Period:', rightMargin - 120, currentY, { 
+           align: 'right',
+           width: 120
+         });
+      
+      doc.moveDown(0.2);
+      
+      doc.fontSize(6).font('Helvetica')
+         .fillColor('#666666')
+         .text(`${startDate} to ${endDate}`, rightMargin - 120, doc.y, { 
+           align: 'right',
+           width: 120
+         });
+      
+      // Reset color back to default
+      doc.fillColor('#000000');
     }
     
     doc.moveDown(0.5);
@@ -973,9 +1020,10 @@ class UnifiedPDFService {
   /**
    * Generate class schedule PDF
    */
-  async generateClassSchedulePDF(programCode, semester, section) {
+  async generateClassSchedulePDF(programCode, semester, section, options = {}) {
     try {
-      console.log(`📄 Generating class schedule PDF for ${programCode}-${semester}-${section}`);
+      const { startDate, endDate } = options;
+      console.log(`📄 Generating class schedule PDF for ${programCode}-${semester}-${section}${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}`);
       
       // Get routine slots for this section
       const routineSlots = await RoutineSlot.find({
@@ -1065,7 +1113,9 @@ class UnifiedPDFService {
         programCode: programCode.toUpperCase(),
         programName: program?.name || programCode,
         semester: parseInt(semester),
-        section: section.toUpperCase()
+        section: section.toUpperCase(),
+        startDate,
+        endDate
       });
 
       this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'class', null, null, semester);
@@ -1091,9 +1141,10 @@ class UnifiedPDFService {
   /**
    * Generate teacher schedule PDF
    */
-  async generateTeacherSchedulePDF(teacherId, teacherName, semesterFilter = 'all') {
+  async generateTeacherSchedulePDF(teacherId, teacherName, semesterFilter = 'all', options = {}) {
     try {
-      console.log(`📄 Generating teacher schedule PDF for ${teacherName || teacherId}`);
+      const { startDate, endDate } = options;
+      console.log(`📄 Generating teacher schedule PDF for ${teacherName || teacherId}${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}`);
 
       const query = {
         teacherIds: teacherId,
@@ -1164,7 +1215,9 @@ class UnifiedPDFService {
       this._generatePDFHeader(doc, {
         title: `Teacher Schedule - ${teacherName || 'Teacher'}`,
         subtitle: `Weekly Schedule`,
-        teacherName: teacherName
+        teacherName: teacherName,
+        startDate,
+        endDate
       });
 
       this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacherName, null);
@@ -1189,9 +1242,10 @@ class UnifiedPDFService {
   /**
    * Generate room schedule PDF
    */
-  async generateRoomSchedulePDF(roomId, roomName, semesterFilter = 'all') {
+  async generateRoomSchedulePDF(roomId, roomName, semesterFilter = 'all', options = {}) {
     try {
-      console.log(`📄 Generating room schedule PDF for ${roomName || roomId}`);
+      const { startDate, endDate } = options;
+      console.log(`📄 Generating room schedule PDF for ${roomName || roomId}${startDate && endDate ? ` (${startDate} to ${endDate})` : ''}`);
 
       const query = {
         roomId: roomId,
@@ -1261,7 +1315,9 @@ class UnifiedPDFService {
       this._generatePDFHeader(doc, {
         title: `Room Schedule - ${roomName || 'Room'}`,
         subtitle: `Weekly Schedule`,
-        roomName: roomName
+        roomName: roomName,
+        startDate,
+        endDate
       });
 
       this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'room', roomName, null, null);
@@ -1352,14 +1408,14 @@ class UnifiedPDFService {
           continue;
         }
 
-        const program = await Program.findOne({ code: programCode.toUpperCase() });
-
-        this._generatePDFHeader(doc, {
-          programCode: programCode.toUpperCase(),
-          programName: program?.name || programCode,
-          semester: parseInt(semester),
-          section: section.toUpperCase()
-        });
+        const program = await Program.findOne({ code: programCode.toUpperCase() });      this._generatePDFHeader(doc, {
+        programCode: programCode.toUpperCase(),
+        programName: program?.name || programCode,
+        semester: parseInt(semester),
+        section: section.toUpperCase(),
+        startDate,
+        endDate
+      });
 
         this.fillRoutineData(doc, routineSlots, timeSlots, 'class', null, null, semester);
         this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
