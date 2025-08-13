@@ -855,160 +855,6 @@ class UnifiedPDFService {
   }
 
   /**
-   * Get class type text
-   */
-  _getClassTypeText(classType) {
-    switch (classType) {
-      case 'L': return 'L';
-      case 'P': return 'P';
-      case 'T': return 'T';
-      case 'BREAK': return 'Break';
-      default: return classType || 'N/A';
-    }
-  }
-
-  /**
-   * Draw a cell with content and support for horizontal separators
-   * Enhanced with upward text positioning and better readability
-   */
-  _drawCell(doc, x, y, width, height, text, bgColor = '#ffffff', isHeader = false, isLab = false) {
-    // Enhanced: Remove background colors for merged classes
-    if (text && text.includes('──────')) {
-      bgColor = '#ffffff'; // Use white background for merged classes
-    }
-    
-    // Draw cell background with border
-    doc.rect(x, y, width, height)
-       .lineWidth(0.5)
-       .fillAndStroke(bgColor, '#c0c0c0');
-    
-    if (text && text.trim()) {
-      const lines = text.split('\n').filter(line => line.trim());
-      const isMergedClass = text.includes('──────'); // Merged class separator
-      const isMultiGroupClass = isMergedClass || 
-                              (text && text.includes('Multiple Groups')) || 
-                              (text && text.includes('Group A & Group B')) ||
-                              (text && text.includes('Group C & Group D')) ||
-                              (text && text.includes(' & ')) || // General pattern for joined groups
-                              (text && /\(Group [A-D] & Group [A-D]\)/.test(text));
-      
-      // ENHANCED: Eye-friendly font sizing with larger text and smart auto-wrapping
-      let fontSize;
-      const textLength = text.length;
-      const lineCount = lines.length;
-      
-      if (isHeader) {
-        fontSize = 8.5; // Same size as content for complete consistency
-      } else {
-        // SIMPLIFIED: Single consistent font size for all content types
-        fontSize = 8.5; // Single font size for all slots - consistent and readable
-        
-        // Only apply width scaling for very narrow or very wide cells
-        const widthFactor = Math.max(0.9, Math.min(1.1, width / 80));
-        fontSize = Math.max(4.5, fontSize * widthFactor);
-      }
-      
-      const font = isHeader ? 'Helvetica-Bold' : (isLab ? 'Helvetica-Bold' : 'Helvetica');
-      const textColor = '#333333'; // Use same color for all classes
-      
-      doc.fontSize(fontSize)
-         .font(font)
-         .fillColor(textColor);
-      
-      // ENHANCED: More generous line height for better readability
-      const lineHeight = fontSize * (isMergedClass || isMultiGroupClass ? 1.25 : 1.3); // More spacious line spacing
-      const totalTextHeight = lines.length * lineHeight;
-      
-      // ENHANCED: Smart vertical positioning - shift upward when space is limited
-      let textStartY;
-      const cellPadding = 4; // Increased padding for better visual breathing room
-      const availableHeight = height - (cellPadding * 2);
-      
-      if (totalTextHeight <= availableHeight) {
-        // Text fits comfortably - center it vertically with slight upward bias
-        const verticalSpace = availableHeight - totalTextHeight;
-        const upwardShift = Math.min(verticalSpace * 0.3, 3); // Shift up by 30% of extra space, max 3pt
-        textStartY = y + cellPadding + (verticalSpace / 2) - upwardShift;
-      } else {
-        // Text is too tall - start from top with minimal padding and shift upward if needed
-        const emergencyPadding = Math.max(1, cellPadding / 2); // Reduce padding when space is tight
-        textStartY = y + emergencyPadding;
-        
-        // ENHANCED: Intelligent font reduction with upward positioning preference
-        if (totalTextHeight > availableHeight) {
-          const reductionFactor = Math.max(0.75, (availableHeight - 2) / totalTextHeight); // Ensure some margin
-          fontSize *= reductionFactor;
-          doc.fontSize(fontSize);
-          
-          // Recalculate with new font size and position text higher in cell
-          const newLineHeight = fontSize * 1.2; // Tighter line spacing for cramped text
-          const newTotalHeight = lines.length * newLineHeight;
-          
-          // Position text in upper portion of cell for better visibility
-          const upperPortionY = y + Math.max(1, emergencyPadding);
-          textStartY = upperPortionY;
-          
-          // If still too tall, position at very top of cell
-          if (newTotalHeight > height - 2) {
-            textStartY = y + 1;
-          }
-        }
-      }
-      
-      // ENHANCED: Smart text rendering with upward positioning and centering
-      lines.forEach((line, index) => {
-        const lineY = textStartY + (index * lineHeight);
-        
-        // Enhanced boundary checking - allow text closer to edges for better space utilization
-        if (lineY < y - 1 || lineY + fontSize > y + height + 1) {
-          return;
-        }
-        
-        if (line.trim() === '──────') {
-          // Draw separator line
-          const borderY = lineY + (fontSize * 0.4);
-          if (borderY >= y + 1 && borderY <= y + height - 1) {
-            doc.save();
-            doc.strokeColor('#cccccc')
-               .lineWidth(0.5)
-               .moveTo(x + 5, borderY)
-               .lineTo(x + width - 5, borderY)
-               .stroke();
-            doc.restore();
-            doc.fillColor(textColor);
-          }
-        } else if (line.trim()) {
-          // ENHANCED: Center text horizontally and ensure proper vertical positioning
-          const textWidth = doc.widthOfString(line);
-          const availableWidth = width - 4; // Leave small margins
-          
-          if (textWidth <= availableWidth) {
-            // Text fits - center it
-            const textX = x + Math.max(2, (width - textWidth) / 2);
-            const adjustedY = Math.max(y + 1, Math.min(lineY, y + height - fontSize - 1));
-            
-            doc.text(line, textX, adjustedY);
-          } else {
-            // Text too wide - center it with clipping
-            const adjustedY = Math.max(y + 1, Math.min(lineY, y + height - fontSize - 1));
-            
-            doc.text(line, x + 2, adjustedY, {
-              width: availableWidth,
-              height: fontSize + 2,
-              align: 'center',
-              ellipsis: false,
-              lineBreak: false
-            });
-          }
-        }
-      });
-      
-      // Reset fill color
-      doc.fillColor('#000000');
-    }
-  }
-
-  /**
    * Generate PDF header
    */
   _generatePDFHeader(doc, options = {}) {
@@ -1050,6 +896,74 @@ class UnifiedPDFService {
    */
   _generatePDFFooter(doc, scheduleType) {
     // Footer removed to give more space to the routine grid
+  }
+
+  /**
+   * Generate room lookup table for teacher schedule PDFs
+   * Based on the hardcoded lookup table provided in the photo
+   */
+  _generateRoomLookupTable(doc) {
+    // Move down from the routine grid
+    doc.moveDown(1.5);
+    
+    // Header
+    doc.fontSize(9).font('Helvetica-Bold')
+       .text('# ALL LECTURE ROOMS ARE IN B-BLOCK', { align: 'left' });
+    
+    doc.moveDown(0.3);
+    
+    // Define the hardcoded lookup table based on the photo
+    const lookupData = [
+      'Lecture Room 1 -> BEX IV',
+      'Lecture Room 2 -> BCT IV', 
+      'Lecture Room 3 -> BEX III',
+      'Lecture Room 4 -> BCT III',
+      'Lecture Room 5 -> BEX II',
+      'Lecture Room 6 -> BCT II',
+      'Lecture Room 7 -> BEX I',
+      'Lecture Room 8 -> BCT I - GROUP AB',
+      'Lecture Room 9 -> BCT I - GROUP CD',
+      'ELECTRONICS LAB 2-5 -> labs in B-block',
+      'COMPUTER LAB 1 -> lab in C-block',
+      'COMPUTER LAB 2 -> lab in C-block (master\'s class)',
+      'COMPUTER LAB 4 -> lab in CIT building',
+      'COMPUTER LAB 5 -> lab in Library building'
+    ];
+
+    const rowsPerColumn = 7;
+    const rowHeight = 12;
+    const columnWidth = 190;
+    const columnSpacing = -60;
+    const startX = doc.page.margins.left;
+    const startY = doc.y;
+    
+    // Calculate number of columns needed
+    const totalColumns = Math.ceil(lookupData.length / rowsPerColumn);
+    
+    // Draw columns dynamically
+    for (let colIndex = 0; colIndex < totalColumns; colIndex++) {
+      const columnStartX = startX + (colIndex * (columnWidth + columnSpacing));
+      const dataStartIndex = colIndex * rowsPerColumn;
+      const dataEndIndex = Math.min(dataStartIndex + rowsPerColumn, lookupData.length);
+      const columnData = lookupData.slice(dataStartIndex, dataEndIndex);
+      
+      // Draw each item in the column
+      columnData.forEach((item, rowIndex) => {
+        const y = startY + (rowIndex * rowHeight);
+        
+        doc.fontSize(7).font('Helvetica').fillColor('#333333');
+        doc.text(item, columnStartX, y, {
+          width: columnWidth - 5,
+          align: 'left'
+        });
+      });
+    }
+    
+    // Update doc.y to after the table
+    doc.y = startY + (rowsPerColumn * rowHeight) + 10;
+    
+    // Reset font and color
+    doc.fontSize(10).font('Helvetica').fillColor('#000000');
   }
 
   // ===============================
@@ -1254,6 +1168,7 @@ class UnifiedPDFService {
       });
 
       this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacherName, null);
+      this._generateRoomLookupTable(doc);
       this._generatePDFFooter(doc, `Teacher Schedule - ${teacherName || 'Teacher'}`);
 
       return new Promise((resolve) => {
@@ -1571,6 +1486,7 @@ class UnifiedPDFService {
         });
 
         this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacher.fullName, null);
+        this._generateRoomLookupTable(doc);
         this._generatePDFFooter(doc, `Teacher Schedule - ${teacher.fullName}`);
       }
 
@@ -2127,7 +2043,7 @@ class UnifiedPDFService {
         content += `${group.programSemesterSection}\n`;
         const teachers = Array.isArray(group.teacherShortNames) 
           ? group.teacherShortNames.join(', ')
-          : (group.teacherShortNames || 'TBA');
+          : 'TBA';
         content += `${teachers}`;
       }
 
@@ -2194,6 +2110,157 @@ class UnifiedPDFService {
       default: return classType || 'N/A';
     }
   }
+
+  /**
+   * Draw a cell in the PDF table with background, border and text
+   */
+  _drawCell(doc, x, y, width, height, text, bgColor = '#ffffff', isHeader = false, isLab = false) {
+    // Remove background colors for merged classes
+    if (text && text.includes('──────')) {
+      bgColor = '#ffffff'; // Use white background for merged classes
+    }
+    
+    // Draw cell background with border
+    doc.rect(x, y, width, height)
+       .lineWidth(0.5)
+       .fillAndStroke(bgColor, '#c0c0c0');
+    
+    // Draw text with proper centering and border lines for merged classes
+    if (text && text.trim()) {
+      // Split text into lines and check for merged classes
+      const lines = text.split('\n').filter(line => line.trim());
+      const isMergedClass = text.includes('──────'); // Merged class separator
+      const isMultiGroupClass = isMergedClass || 
+                              (text && text.includes('Multiple Groups')) || 
+                              (text && text.includes('Group A & Group B')) ||
+                              (text && text.includes('Group C & Group D')) ||
+                              (text && text.includes(' & ')) || // General pattern for joined groups
+                              (text && /\(Group [A-D] & Group [A-D]\)/.test(text));
+      
+      // Force small font sizes for all content
+      const fontSizeMultiplier = 0.75; // Force 50% reduction
+      
+      // Dynamic font sizing based on content length - force small fonts
+      let fontSize;
+      if (isHeader) {
+        fontSize = Math.round(10 * fontSizeMultiplier); // Force small headers
+      } else if (isMultiGroupClass) {
+        fontSize = Math.round(8 * fontSizeMultiplier); // Force small multi-group text
+      } else if (isMergedClass || lines.length > 8) {
+        fontSize = Math.round(7 * fontSizeMultiplier); // Force small merged class text
+      } else if (lines.length > 5) {
+        fontSize = Math.round(7 * fontSizeMultiplier); // Much smaller moderately long content for A4
+      } else {
+        fontSize = Math.round(8 * fontSizeMultiplier); // Much smaller standard content for A4
+      }
+      
+      const font = isHeader ? 'Helvetica-Bold' : (isLab ? 'Helvetica-Bold' : 'Helvetica');
+      const textColor = '#333333'; // Use same color for all classes (lecture and practical)
+      
+      doc.fontSize(fontSize)
+         .font(font)
+         .fillColor(textColor);
+      
+      const lineHeight = fontSize * (isMergedClass || isMultiGroupClass ? 1.3 : 1.2); // Better line spacing for multi-group content
+      const totalTextHeight = lines.length * lineHeight;
+      
+      // Detect elective classes and apply increased spacing between subject and teacher
+      const isElectiveClass = text && (text.includes('---') || (lines.length >= 2 && /^[A-Z]{2,4}$/.test(lines[lines.length - 1].trim())));
+      
+      // Calculate vertical position - special handling for practical classes
+      let textStartY;
+      
+      // Check if this is a practical class with Group A/B content or multi-group content
+      const isPracticalClass = isLab || (text && text.includes('| ')) || (text && text.includes('Group A')) || (text && text.includes('Group B'));
+      
+      if (isPracticalClass || isMultiGroupClass) {
+        // For practical/multi-group classes: better vertical centering with proper spacing
+        const cellCenterY = y + (height / 2);
+        const proposedStartY = cellCenterY - (totalTextHeight / 2);
+        
+        // Ensure text starts within cell boundaries with minimal top padding
+        const minTopPadding = 4; // Slightly increased for better spacing
+        const maxBottomY = y + height - 4; // Better bottom margin
+        
+        textStartY = Math.max(proposedStartY, y + minTopPadding);
+        
+        // If content would extend beyond bottom, adjust start position
+        if (textStartY + totalTextHeight > maxBottomY) {
+          textStartY = Math.max(y + minTopPadding, maxBottomY - totalTextHeight);
+        }
+      } else {
+        // For lecture classes: start very close to top for compact cells
+        const cellCenterY = y + (height / 2);
+        const proposedStartY = cellCenterY - (totalTextHeight / 2) + (lineHeight * 0.1); // Minimal offset
+        
+        // Ensure content stays within cell boundaries with minimal padding
+        const minTopPadding = 2; // Reduced to 2 pixels
+        const maxBottomY = y + height - 2; // Reduced bottom margin to 2px
+        
+        textStartY = Math.max(proposedStartY, y + minTopPadding);
+        if (textStartY + totalTextHeight > maxBottomY) {
+          textStartY = Math.max(y + minTopPadding, maxBottomY - totalTextHeight);
+        }
+      }
+      
+      // Draw each line with horizontal centering and border lines for separators
+      let cumulativeY = textStartY;
+      lines.forEach((line, index) => {
+        if (line.trim()) {
+          // Apply increased spacing for elective classes between subject and teacher
+          let extraSpacing = 0;
+          if (isElectiveClass && index > 0) {
+            // Check if this line looks like a teacher name (short, all caps)
+            const isTeacherLine = /^[A-Z]{2,4}$/.test(line.trim());
+            if (isTeacherLine) {
+              extraSpacing = fontSize * 0.8; // Add extra spacing before teacher name
+            }
+          }
+          
+          const lineY = cumulativeY + extraSpacing;
+          cumulativeY = lineY + lineHeight; // Update for next line
+          
+          // Safety check: ensure line doesn't go beyond cell boundaries
+          if (lineY < y || lineY + fontSize > y + height) {
+            return; // Skip lines that would go outside cell boundaries
+          }
+          
+          // Special handling for separator lines in merged classes
+          if (line.trim() === '──────') {
+            // Draw actual border line instead of text
+            const borderY = lineY + (fontSize * 0.3); // Adjust vertical position
+            const borderMargin = 10; // Margin from cell edges
+            
+            // Ensure border line is within cell boundaries
+            if (borderY >= y + 5 && borderY <= y + height - 5) {
+              doc.save();
+              doc.strokeColor('#888888')
+                 .lineWidth(0.8)
+                 .moveTo(x + borderMargin, borderY)
+                 .lineTo(x + width - borderMargin, borderY)
+                 .stroke();
+              doc.restore();
+              
+              // Reset text color after drawing border
+              doc.fillColor(textColor);
+            }
+          } else {
+            // Use PDFKit's built-in text alignment for perfect centering with improved spacing
+            doc.text(line.trim(), x + 6, lineY, { // Better horizontal padding for multi-group content
+              width: width - 12, // 6px padding on each side for better text spacing
+              align: 'center',
+              baseline: 'top'
+            });
+          }
+        }
+      });
+      
+      // Reset fill color
+      doc.fillColor('#000000');
+    }
+  }
+
+  // ...existing code...
 }
 
 module.exports = UnifiedPDFService;
