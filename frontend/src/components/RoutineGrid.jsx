@@ -34,6 +34,7 @@ import TeacherExcelActions from './TeacherExcelActions';
 // PDF Components (New)
 import PDFActions from './PDFActions';
 import TeacherPDFActions from './TeacherPDFActions';
+// Removed TimingSelector - now showing both timings always
 import { routinesAPI, timeSlotsAPI } from '../services/api';
 import { handleRoutineChangeCache } from '../utils/teacherScheduleCache';
 import * as timeSlotUtils from '../utils/timeSlotUtils';
@@ -171,14 +172,16 @@ const RoutineGrid = ({
   const [lastDeletedClass, setLastDeletedClass] = useState(null);
   const [showUndoButton, setShowUndoButton] = useState(false);
   
+  // Timing selection state for even semesters
+  // Removed timing selection state - showing both timings always
+  
+  // Set room view mode based on viewType or explicit flag
+  const isRoomViewMode = roomViewMode || viewType === 'room';
   // Form for adding time slots
   const [timeSlotForm] = Form.useForm();
 
   // Use App.useApp for proper context support in modals
   const { modal, message: contextMessage } = App.useApp();
-  
-  // Set room view mode based on viewType or explicit flag
-  const isRoomViewMode = roomViewMode || viewType === 'room';
   
   // Safe message function that uses context message if available, falling back to regular message
   const safeMessage = {
@@ -234,6 +237,8 @@ const RoutineGrid = ({
   
   // Use either the provided routine data or fetch new data
   const routineData = providedRoutineData || fetchedRoutineData;
+
+  // Removed isEvenSemester logic - showing both timings when winter timing exists
 
   // Fetch time slots (use demo data if in demo mode)
   const { 
@@ -1732,6 +1737,8 @@ const RoutineGrid = ({
           </Space>
         }
       >
+        {/* Removed timing selector - showing both timings always in headers */}
+        
         <div className="routine-grid" style={{ overflowX: 'auto', marginTop: '7px', WebkitOverflowScrolling: 'touch' }}>
           <table className="routine-grid-table" style={{ 
             width: '100%', 
@@ -1797,8 +1804,63 @@ const RoutineGrid = ({
                       position: 'relative'
                     }}>
                       <div style={{ fontWeight: '600', fontSize: '12px', color: '#333' }}>
-                        {timeSlot.isBreak ? 'BREAK' : `${timeSlot.startTime} - ${timeSlot.endTime}`}
+                        {timeSlot.isBreak ? 'BREAK' : (() => {
+                          // Always show summer timing
+                          const summerTime = `${timeSlot.startTime} - ${timeSlot.endTime}`;
+                          
+                          // Function to check if there are any even semester classes in the current routine
+                          const hasEvenSemesterClasses = () => {
+                            if (!routine || typeof routine !== 'object') return false;
+                            
+                            for (const dayIndex in routine) {
+                              const dayData = routine[dayIndex];
+                              if (!dayData || typeof dayData !== 'object') continue;
+                              
+                              for (const slotIndex in dayData) {
+                                const classes = dayData[slotIndex];
+                                if (!classes) continue;
+                                
+                                // Handle both single class and array of classes
+                                const classArray = Array.isArray(classes) ? classes : [classes];
+                                
+                                for (const classData of classArray) {
+                                  if (classData && classData.semester && parseInt(classData.semester) % 2 === 0) {
+                                    return true;
+                                  }
+                                }
+                              }
+                            }
+                            return false;
+                          };
+                          
+                          // Check if current context should show winter timing
+                          let shouldShowWinterTiming = false;
+                          
+                          if (!teacherViewMode && !isRoomViewMode) {
+                            // For class routines, check if current semester is even
+                            shouldShowWinterTiming = semester && parseInt(semester) % 2 === 0;
+                          } else {
+                            // For teacher and room views, check if any even semester classes are present
+                            shouldShowWinterTiming = hasEvenSemesterClasses();
+                          }
+                          
+                          // Show winter timing below if it exists and conditions are met
+                          if (shouldShowWinterTiming && timeSlot.winterTiming && timeSlot.winterTiming.startTime && timeSlot.winterTiming.endTime) {
+                            return (
+                              <div style={{ textAlign: 'center' }}>
+                                <div>{summerTime}</div>
+                                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>
+                                  W: {timeSlot.winterTiming.startTime} - {timeSlot.winterTiming.endTime}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          return summerTime;
+                        })()}
                       </div>
+                      
+                      {/* Removed timing type indicator as we show both timings now */}
                       
                       {/* Delete button for editable mode and non-global time slots or admin users */}
                       {isEditable && !demoMode && !teacherViewMode && !isRoomViewMode && (
@@ -2087,7 +2149,11 @@ const RoutineGrid = ({
               const timeSlotData = {
                 ...values,
                 startTime: values.startTime.format('HH:mm'),
-                endTime: values.endTime.format('HH:mm')
+                endTime: values.endTime.format('HH:mm'),
+                winterTiming: values.winterTiming && (values.winterTiming.startTime || values.winterTiming.endTime) ? {
+                  startTime: values.winterTiming.startTime ? values.winterTiming.startTime.format('HH:mm') : null,
+                  endTime: values.winterTiming.endTime ? values.winterTiming.endTime.format('HH:mm') : null
+                } : null
               };
               addContextTimeSlotMutation.mutate(timeSlotData);
             } catch (error) {
@@ -2099,7 +2165,7 @@ const RoutineGrid = ({
             timeSlotForm.resetFields();
           }}
           confirmLoading={addContextTimeSlotMutation.isLoading}
-          width={500}
+          width={600}
         >
           <Alert
             message="Context-Specific Time Slot"
@@ -2131,7 +2197,7 @@ const RoutineGrid = ({
               <Col span={12}>
                 <Form.Item
                   name="startTime"
-                  label="Start Time"
+                  label="Summer Start Time"
                   rules={[{ required: true, message: 'Please select start time' }]}
                 >
                   <TimePicker
@@ -2144,13 +2210,49 @@ const RoutineGrid = ({
               <Col span={12}>
                 <Form.Item
                   name="endTime"
-                  label="End Time"
+                  label="Summer End Time"
                   rules={[{ required: true, message: 'Please select end time' }]}
                 >
                   <TimePicker
                     format="HH:mm"
                     style={{ width: '100%' }}
                     placeholder="Select end time"
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* Winter timing configuration for all semesters */}
+            <Alert
+              message="Winter Timing Configuration"
+              description="Configure winter timing for this time slot. Leave empty to use summer timing year-round."
+              type="info"
+              showIcon
+              style={{ marginBottom: '16px' }}
+            />
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  name={['winterTiming', 'startTime']}
+                  label="Winter Start Time"
+                >
+                  <TimePicker
+                    format="HH:mm"
+                    style={{ width: '100%' }}
+                    placeholder="Optional winter start time"
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name={['winterTiming', 'endTime']}
+                  label="Winter End Time"
+                >
+                  <TimePicker
+                    format="HH:mm"
+                    style={{ width: '100%' }}
+                    placeholder="Optional winter end time"
                   />
                 </Form.Item>
               </Col>

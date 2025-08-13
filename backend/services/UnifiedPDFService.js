@@ -152,7 +152,7 @@ class UnifiedPDFService {
    * UNIFIED: Single fillRoutineData method with fixed time slot mapping
    * Replaces all duplicate implementations across different services
    */
-  fillRoutineData(doc, routineSlots, timeSlots, pdfType = 'class', roomName = null, teacherName = null) {
+  fillRoutineData(doc, routineSlots, timeSlots, pdfType = 'class', roomName = null, teacherName = null, semester = null) {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     
     console.log(`🔄 Starting UNIFIED PDF generation for ${pdfType} with FIXED time slot mapping...`);
@@ -164,15 +164,37 @@ class UnifiedPDFService {
       console.log(`  ${index}: ID=${slot._id}, Label="${slot.label}", Start="${slot.startTime}", End="${slot.endTime}", Sort=${slot.sortOrder}, Global=${slot.isGlobal}`);
     });
     
-    // Grid dimensions - optimized for A4 landscape
+    // Function to check if there are any even semester classes in the routine slots
+    const hasEvenSemesterClasses = () => {
+      if (!routineSlots || routineSlots.length === 0) return false;
+      
+      return routineSlots.some(slot => {
+        return slot.semester && parseInt(slot.semester) % 2 === 0;
+      });
+    };
+    
+    // Check if we need taller headers with winter timing
+    let shouldShowWinterTiming = false;
+    
+    if (pdfType === 'class') {
+      // For class PDFs, check if current semester is even
+      shouldShowWinterTiming = semester && parseInt(semester) % 2 === 0;
+    } else {
+      // For teacher and room PDFs, check if any even semester classes are present
+      shouldShowWinterTiming = hasEvenSemesterClasses();
+    }
+    
+    const hasWinterTiming = shouldShowWinterTiming && timeSlots.some(slot => slot.winterTiming?.startTime && slot.winterTiming?.endTime);
+    
+    // Grid dimensions - optimized for A4 landscape, adjusted for dual timing
     const startX = doc.page.margins.left;
     const startY = doc.y;
     const totalWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
     
     const dayColumnWidth = 55;
     const timeColumnWidth = (totalWidth - dayColumnWidth) / timeSlots.length;
-    const headerRowHeight = 20;
-    const rowHeight = 60;
+    const headerRowHeight = hasWinterTiming ? 30 : 20; // Taller headers when showing winter timing
+    const rowHeight = 60; // Standard row height
 
     // FIXED: Create routine lookup map using correct time slot mapping
     const routineMap = this._createRoutineMap(routineSlots, timeSlots);
@@ -180,13 +202,27 @@ class UnifiedPDFService {
     // Step 1: Detect spanning classes
     const spanningClasses = this._detectSpanningClasses(routineSlots, timeSlots, days);
 
-    // Step 2: Draw header row with consistent 8.5pt font size
+    // Step 2: Draw header row with dual timing support
     doc.fontSize(8.5).font('Helvetica-Bold'); // Same size as content
     this._drawCell(doc, startX, startY, dayColumnWidth, headerRowHeight, '', '#f0f0f0', true);
     
     timeSlots.forEach((timeSlot, index) => {
       const x = startX + dayColumnWidth + (index * timeColumnWidth);
-      const headerText = timeSlot.isBreak ? 'BREAK' : `${timeSlot.startTime}-${timeSlot.endTime}`;
+      let headerText;
+      
+      if (timeSlot.isBreak) {
+        headerText = 'BREAK';
+      } else {
+        // Check if current context should show winter timing
+        if (shouldShowWinterTiming && timeSlot.winterTiming?.startTime && timeSlot.winterTiming?.endTime) {
+          // Show both summer and winter timing
+          headerText = `${timeSlot.startTime}-${timeSlot.endTime}\nW: ${timeSlot.winterTiming.startTime}-${timeSlot.winterTiming.endTime}`;
+        } else {
+          // Show only summer timing
+          headerText = `${timeSlot.startTime}-${timeSlot.endTime}`;
+        }
+      }
+      
       this._drawCell(doc, x, startY, timeColumnWidth, headerRowHeight, headerText, '#f0f0f0', true);
     });
 
@@ -798,7 +834,7 @@ class UnifiedPDFService {
     if (pdfType === 'teacher') {
       return roomDisplayName ? `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${roomDisplayName}` : `${wrappedSubjectName}${labGroupIndicator} [${classType}]`;
     } else if (pdfType === 'room') {
-      const section = `${slot.programCode}-${slot.semester}${slot.section}`;
+      const section = `${slot.programCode}-${slot.semester}-${slot.section}`;
       if (slot.classType === 'P') {
         // Practical class: show section and teacher side by side
         const sectionTeacherLine = teacherNames ? `${section} | ${teacherNames}` : section;
@@ -1118,7 +1154,7 @@ class UnifiedPDFService {
         section: section.toUpperCase()
       });
 
-      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'class');
+      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'class', null, null, semester);
 
       this._generateTeacherMappingTable(doc, routineSlots);
       this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
@@ -1217,7 +1253,7 @@ class UnifiedPDFService {
         teacherName: teacherName
       });
 
-      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacherName);
+      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacherName, null);
       this._generatePDFFooter(doc, `Teacher Schedule - ${teacherName || 'Teacher'}`);
 
       return new Promise((resolve) => {
@@ -1313,7 +1349,7 @@ class UnifiedPDFService {
         roomName: roomName
       });
 
-      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'room', roomName);
+      this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'room', roomName, null, null);
       this._generatePDFFooter(doc, `Room Schedule - ${roomName || 'Room'}`);
 
       return new Promise((resolve) => {
@@ -1410,7 +1446,7 @@ class UnifiedPDFService {
           section: section.toUpperCase()
         });
 
-        this.fillRoutineData(doc, routineSlots, timeSlots, 'class');
+        this.fillRoutineData(doc, routineSlots, timeSlots, 'class', null, null, semester);
         this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
       }
 
@@ -1534,7 +1570,7 @@ class UnifiedPDFService {
           teacherName: teacher.fullName
         });
 
-        this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacher.fullName);
+        this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'teacher', null, teacher.fullName, null);
         this._generatePDFFooter(doc, `Teacher Schedule - ${teacher.fullName}`);
       }
 
@@ -1657,7 +1693,7 @@ class UnifiedPDFService {
           roomName: room.name
         });
 
-        this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'room', room.name);
+        this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'room', room.name, null, null);
         this._generatePDFFooter(doc, `Room Schedule - ${room.name}`);
       }
 

@@ -160,7 +160,11 @@ const TimeSlotManagement = () => {
     form.setFieldsValue({
       ...timeSlot,
       startTime: dayjs(timeSlot.startTime, 'HH:mm'),
-      endTime: dayjs(timeSlot.endTime, 'HH:mm')
+      endTime: dayjs(timeSlot.endTime, 'HH:mm'),
+      winterTiming: timeSlot.winterTiming ? {
+        startTime: timeSlot.winterTiming.startTime ? dayjs(timeSlot.winterTiming.startTime, 'HH:mm') : null,
+        endTime: timeSlot.winterTiming.endTime ? dayjs(timeSlot.winterTiming.endTime, 'HH:mm') : null
+      } : {}
     });
   };
 
@@ -175,7 +179,11 @@ const TimeSlotManagement = () => {
       const timeSlotData = {
         ...values,
         startTime: values.startTime.format('HH:mm'),
-        endTime: values.endTime.format('HH:mm')
+        endTime: values.endTime.format('HH:mm'),
+        winterTiming: values.winterTiming && (values.winterTiming.startTime || values.winterTiming.endTime) ? {
+          startTime: values.winterTiming.startTime ? values.winterTiming.startTime.format('HH:mm') : null,
+          endTime: values.winterTiming.endTime ? values.winterTiming.endTime.format('HH:mm') : null
+        } : null
       };
       
       if (editingTimeSlot) {
@@ -258,6 +266,32 @@ const TimeSlotManagement = () => {
           {isBreak ? 'Break' : 'Class'}
         </Tag>
       )
+    },
+    {
+      title: 'Winter Timing',
+      key: 'winterTiming',
+      width: 160,
+      align: 'center',
+      render: (_, record) => {
+        if (record.winterTiming && record.winterTiming.startTime && record.winterTiming.endTime) {
+          const start = dayjs(record.winterTiming.startTime, 'HH:mm');
+          const end = dayjs(record.winterTiming.endTime, 'HH:mm');
+          const duration = end.diff(start, 'minute');
+          return (
+            <div>
+              <div>
+                <Tag color="purple" size="small">
+                  {record.winterTiming.startTime}-{record.winterTiming.endTime}
+                </Tag>
+              </div>
+              <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>
+                {duration} min
+              </div>
+            </div>
+          );
+        }
+        return <Text type="secondary" style={{ fontSize: '12px' }}>Not set</Text>;
+      }
     },
     {
       title: 'Actions',
@@ -392,7 +426,7 @@ const TimeSlotManagement = () => {
             <Col span={12}>
               <Form.Item
                 name="startTime"
-                label="Start Time"
+                label="Summer Start Time"
                 rules={[{ required: true, message: 'Please select start time' }]}
               >
                 <TimePicker
@@ -405,13 +439,48 @@ const TimeSlotManagement = () => {
             <Col span={12}>
               <Form.Item
                 name="endTime"
-                label="End Time"
+                label="Summer End Time"
                 rules={[{ required: true, message: 'Please select end time' }]}
               >
                 <TimePicker
                   format="HH:mm"
                   style={{ width: '100%' }}
                   placeholder="Select end time"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Alert
+            message="Winter Timing Configuration"
+            description="Configure winter timing for even semester groups (2nd, 4th, 6th, 8th semesters). Leave empty to use summer timing for all semesters."
+            type="info"
+            showIcon
+            style={{ marginBottom: '16px' }}
+          />
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name={['winterTiming', 'startTime']}
+                label="Winter Start Time"
+              >
+                <TimePicker
+                  format="HH:mm"
+                  style={{ width: '100%' }}
+                  placeholder="Optional winter start time"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name={['winterTiming', 'endTime']}
+                label="Winter End Time"
+              >
+                <TimePicker
+                  format="HH:mm"
+                  style={{ width: '100%' }}
+                  placeholder="Optional winter end time"
                 />
               </Form.Item>
             </Col>

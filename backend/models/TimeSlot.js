@@ -94,6 +94,35 @@ const timeSlotDefinitionSchema = new mongoose.Schema({
     type: Boolean,
     default: true
     // true = available to all, false = context-specific
+  },
+  
+  // Winter timing fields for even semester groups
+  winterTiming: {
+    startTime: {
+      type: String,
+      default: null,
+      validate: {
+        validator: function(v) {
+          return !v || /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(v);
+        },
+        message: 'Winter start time must be in HH:MM format (24-hour)'
+      }
+    },
+    endTime: {
+      type: String,
+      default: null,
+      validate: {
+        validator: function(v) {
+          return !v || /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(v);
+        },
+        message: 'Winter end time must be in HH:MM format (24-hour)'
+      }
+    },
+    duration: {
+      type: Number,
+      default: 0
+      // Winter duration in minutes (auto-calculated)
+    }
   }
 }, {
   _id: false, // Disable auto-generation since we're using custom _id
@@ -128,6 +157,21 @@ timeSlotDefinitionSchema.pre('save', function(next) {
     }
     
     this.duration = endMinutes - startMinutes;
+    
+    // Calculate winter duration if winter timing is provided
+    if (this.winterTiming && this.winterTiming.startTime && this.winterTiming.endTime) {
+      const winterStart = this.winterTiming.startTime.split(':');
+      const winterEnd = this.winterTiming.endTime.split(':');
+      
+      if (winterStart.length === 2 && winterEnd.length === 2) {
+        const winterStartMinutes = parseInt(winterStart[0]) * 60 + parseInt(winterStart[1]);
+        const winterEndMinutes = parseInt(winterEnd[0]) * 60 + parseInt(winterEnd[1]);
+        
+        if (!isNaN(winterStartMinutes) && !isNaN(winterEndMinutes) && winterEndMinutes > winterStartMinutes) {
+          this.winterTiming.duration = winterEndMinutes - winterStartMinutes;
+        }
+      }
+    }
     
     // Auto-set category if not explicitly provided
     if (!this.category || this.category === 'Morning') {
@@ -168,6 +212,32 @@ timeSlotDefinitionSchema.methods.getDurationHours = function() {
 
 timeSlotDefinitionSchema.methods.isApplicableForDay = function(dayIndex) {
   return this.applicableDays.includes(dayIndex);
+};
+
+// Winter timing methods
+timeSlotDefinitionSchema.methods.hasWinterTiming = function() {
+  return !!(this.winterTiming && this.winterTiming.startTime && this.winterTiming.endTime);
+};
+
+timeSlotDefinitionSchema.methods.getWinterTimeRange = function() {
+  if (this.hasWinterTiming()) {
+    return `${this.winterTiming.startTime} - ${this.winterTiming.endTime}`;
+  }
+  return null;
+};
+
+timeSlotDefinitionSchema.methods.getTimeRangeForTiming = function(timingType = 'summer') {
+  if (timingType === 'winter' && this.hasWinterTiming()) {
+    return this.getWinterTimeRange();
+  }
+  return this.getTimeRange();
+};
+
+timeSlotDefinitionSchema.methods.getDurationForTiming = function(timingType = 'summer') {
+  if (timingType === 'winter' && this.hasWinterTiming()) {
+    return this.winterTiming.duration;
+  }
+  return this.duration;
 };
 
 // Static methods
