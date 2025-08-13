@@ -231,7 +231,7 @@ function App() {
                 } 
               />
               <Route 
-                path="departments-manager" 
+                path="department-manager" 
                 element={
                   <ProtectedRoute requireAdmin>
                     <DepartmentManagement />

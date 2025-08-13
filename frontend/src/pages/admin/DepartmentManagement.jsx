@@ -45,6 +45,7 @@ const DepartmentManagement = () => {
   // Fetch departments
   const fetchDepartments = useCallback(async () => {
     const response = await departmentsAPI.getDepartments();
+    console.log('Departments API response:', response);
     return response.data;
   }, []);
 
@@ -52,23 +53,38 @@ const DepartmentManagement = () => {
     queryKey: ['departments'],
     queryFn: fetchDepartments,
     retry: 1,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    onError: (error) => {
+      console.error('Error fetching departments:', error);
+    }
   });
 
-  const departments = data?.data || [];
+  const departments = data || [];
+  
+  console.log('Departments data:', { 
+    data, 
+    departments, 
+    isLoading, 
+    isError, 
+    error: error?.message 
+  });
 
   // Create department mutation
   const createMutation = useMutation({
     mutationFn: (departmentData) => departmentsAPI.createDepartment(departmentData),
-    onSuccess: () => {
-      message.success('Department created successfully');
+    onSuccess: (response) => {
+      const departmentName = response.data?.name || 'Department';
+      message.success(`${departmentName} created successfully! 🎉`);
       queryClient.invalidateQueries(['departments']);
       setIsModalVisible(false);
       form.resetFields();
     },
     onError: (error) => {
-      message.error(`Failed to create department: ${error.response?.data?.message || error.message}`);
+      const errorMessage = error.response?.data?.msg || 
+                          error.response?.data?.message || 
+                          'Failed to create department';
+      message.error(`Failed to create department: ${errorMessage}`);
     }
   });
 
@@ -91,11 +107,14 @@ const DepartmentManagement = () => {
   const deleteMutation = useMutation({
     mutationFn: (id) => departmentsAPI.deleteDepartment(id),
     onSuccess: () => {
-      message.success('Department deleted successfully');
+      message.success('Department deleted successfully! 🗑️');
       queryClient.invalidateQueries(['departments']);
     },
     onError: (error) => {
-      message.error(`Failed to delete department: ${error.response?.data?.message || error.message}`);
+      const errorMessage = error.response?.data?.msg || 
+                          error.response?.data?.message || 
+                          'Failed to delete department';
+      message.error(`Failed to delete department: ${errorMessage}`);
     }
   });
 
@@ -231,17 +250,19 @@ const DepartmentManagement = () => {
             Edit
           </Button>
           <Popconfirm
-            title="Delete Department"
-            description="Are you sure you want to delete this department?"
+            title={`Delete ${record.name}?`}
+            description={`Are you sure you want to delete "${record.name}" department? This action cannot be undone.`}
             onConfirm={() => handleDelete(record._id)}
-            okText="Yes"
-            cancelText="No"
+            okText="Yes, Delete"
+            cancelText="Cancel"
+            okType="danger"
           >
             <Button
               type="link"
               danger
               icon={<DeleteOutlined />}
               style={{ padding: '4px 8px' }}
+              loading={deleteMutation.isLoading}
             >
               Delete
             </Button>
@@ -412,10 +433,20 @@ const DepartmentManagement = () => {
                 label="Department Code"
                 rules={[
                   { required: true, message: 'Please enter department code' },
-                  { max: 10, message: 'Code must not exceed 10 characters' }
+                  { max: 10, message: 'Code must not exceed 10 characters' },
+                  { pattern: /^[A-Z0-9]+$/, message: 'Code should only contain uppercase letters and numbers' }
                 ]}
+                tooltip="Short code to identify the department (e.g., CE, EE, IT)"
               >
-                <Input placeholder="e.g., CE, EE, IT" maxLength={10} />
+                <Input 
+                  placeholder="e.g., CE, EE, IT" 
+                  maxLength={10}
+                  style={{ textTransform: 'uppercase' }}
+                  onChange={(e) => {
+                    const value = e.target.value.toUpperCase();
+                    form.setFieldValue('code', value);
+                  }}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -426,6 +457,7 @@ const DepartmentManagement = () => {
                   { required: true, message: 'Please enter department name' },
                   { max: 100, message: 'Name must not exceed 100 characters' }
                 ]}
+                tooltip="Short name of the department"
               >
                 <Input placeholder="e.g., Computer Engineering" maxLength={100} />
               </Form.Item>
@@ -439,6 +471,7 @@ const DepartmentManagement = () => {
               { required: true, message: 'Please enter full department name' },
               { max: 200, message: 'Full name must not exceed 200 characters' }
             ]}
+            tooltip="Complete official name of the department"
           >
             <Input placeholder="e.g., Department of Computer Engineering" maxLength={200} />
           </Form.Item>
@@ -451,8 +484,9 @@ const DepartmentManagement = () => {
                 rules={[
                   { type: 'email', message: 'Please enter a valid email' }
                 ]}
+                tooltip="Official email address for the department"
               >
-                <Input placeholder="department@example.com" />
+                <Input type="email" placeholder="department@example.com" />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -462,8 +496,9 @@ const DepartmentManagement = () => {
                 rules={[
                   { max: 20, message: 'Phone must not exceed 20 characters' }
                 ]}
+                tooltip="Primary contact phone number"
               >
-                <Input placeholder="+977-1-xxxxxxx" maxLength={20} />
+                <Input type="tel" placeholder="+977-1-xxxxxxx" maxLength={20} />
               </Form.Item>
             </Col>
           </Row>
@@ -474,9 +509,25 @@ const DepartmentManagement = () => {
             rules={[
               { max: 100, message: 'Location must not exceed 100 characters' }
             ]}
+            tooltip="Physical location of the department office"
           >
             <Input placeholder="Building/Floor/Room information" maxLength={100} />
           </Form.Item>
+
+          {!editingDepartment && (
+            <div style={{ 
+              background: '#f6f8fa', 
+              padding: '12px 16px', 
+              borderRadius: '6px', 
+              border: '1px solid #e1e4e8',
+              marginTop: '16px'
+            }}>
+              <Text type="secondary" style={{ fontSize: '13px' }}>
+                <strong>💡 Note:</strong> The department will be created as active by default. 
+                You can manage teachers and other details after creation.
+              </Text>
+            </div>
+          )}
         </Form>
       </Modal>
     </div>
