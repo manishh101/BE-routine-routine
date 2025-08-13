@@ -51,13 +51,13 @@ const MESSAGES = {
  */
 class PDFExportService {
   async exportRoutine(programCode, semester, section, options = {}) {
-    const { onStart, onSuccess, onError } = options;
+    const { onStart, onSuccess, onError, startDate, endDate } = options;
     
     try {
       onStart?.();
       message.loading(MESSAGES.EXPORT.LOADING, 0);
 
-      const response = await routinesAPI.exportRoutineToPDF(programCode, semester, section);
+      const response = await routinesAPI.exportRoutineToPDF(programCode, semester, section, { startDate, endDate });
       
       // Create download
       const filename = this._generateRoutineFilename(programCode, semester, section);

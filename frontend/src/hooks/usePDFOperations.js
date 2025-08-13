@@ -28,7 +28,9 @@ const usePDFOperations = (programCode, semester, section) => {
       await pdfService.exportRoutine(programCode, semester, section, {
         onStart: () => options.onStart?.(),
         onSuccess: (filename) => options.onSuccess?.(filename),
-        onError: (error) => options.onError?.(error)
+        onError: (error) => options.onError?.(error),
+        startDate: options.startDate,
+        endDate: options.endDate
       });
     } finally {
       setIsExporting(false);

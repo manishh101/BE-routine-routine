@@ -351,10 +351,17 @@ export const teachersAPI = {
   },
 
   // PDF Export Methods (New)
-  exportTeacherScheduleToPDF: (id, semesterGroup = 'all') => {
-    const params = semesterGroup && semesterGroup !== 'all' ? `?semesterGroup=${semesterGroup}` : '';
+  exportTeacherScheduleToPDF: (id, semesterGroup = 'all', options = {}) => {
+    const params = new URLSearchParams();
+    if (semesterGroup && semesterGroup !== 'all') params.append('semesterGroup', semesterGroup);
+    if (options.startDate) params.append('startDate', options.startDate);
+    if (options.endDate) params.append('endDate', options.endDate);
+    
+    const queryString = params.toString();
+    const url = `/routines/teacher/${id}/export-pdf${queryString ? '?' + queryString : ''}`;
+    
     return queuedRequest(
-      () => api.get(`/routines/teacher/${id}/export-pdf${params}`, { responseType: 'blob' }),
+      () => api.get(url, { responseType: 'blob' }),
       `exporting schedule to PDF for teacher ${id}`
     );
   },
@@ -405,8 +412,14 @@ export const routinesAPI = {
   exportRoutineToExcel: (programCode, semester, section) => 
     api.get(`/routines/${programCode}/${semester}/${section}/export`, { responseType: 'blob' }),
   // PDF Export Methods (New)
-  exportRoutineToPDF: (programCode, semester, section) => 
-    api.get(`/routines/${programCode}/${semester}/${section}/export-pdf`, { responseType: 'blob' }),
+  exportRoutineToPDF: (programCode, semester, section, options = {}) => {
+    const params = new URLSearchParams();
+    if (options.startDate) params.append('startDate', options.startDate);
+    if (options.endDate) params.append('endDate', options.endDate);
+    
+    const url = `/routines/${programCode}/${semester}/${section}/export-pdf${params.toString() ? '?' + params.toString() : ''}`;
+    return api.get(url, { responseType: 'blob' });
+  },
   exportAllSemesterRoutinesToPDF: (programCode, semester) => 
     api.get(`/routines/${programCode}/semester/${semester}/export-pdf-all`, { responseType: 'blob' }),
   importRoutineFromExcel: (programCode, semester, section, file) => {
@@ -529,9 +542,16 @@ export const roomsAPI = {
   }),
   
   // PDF Export Methods (New)
-  exportRoomScheduleToPDF: (roomId, semesterGroup = 'all') => {
-    const params = semesterGroup && semesterGroup !== 'all' ? `?semesterGroup=${semesterGroup}` : '';
-    return api.get(`/routines/room/${roomId}/export-pdf${params}`, {
+  exportRoomScheduleToPDF: (roomId, semesterGroup = 'all', options = {}) => {
+    const params = new URLSearchParams();
+    if (semesterGroup && semesterGroup !== 'all') params.append('semesterGroup', semesterGroup);
+    if (options.startDate) params.append('startDate', options.startDate);
+    if (options.endDate) params.append('endDate', options.endDate);
+    
+    const queryString = params.toString();
+    const url = `/routines/room/${roomId}/export-pdf${queryString ? '?' + queryString : ''}`;
+    
+    return api.get(url, {
       responseType: 'blob'
     });
   },

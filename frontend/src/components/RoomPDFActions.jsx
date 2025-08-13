@@ -9,6 +9,7 @@ import { FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import { roomsAPI } from '../services/api';
 import { useSemesterGroup } from '../contexts/SemesterGroupContext';
+import ClassDateModal from './ClassDateModal';
 
 const RoomPDFActions = ({ 
   roomId,
@@ -18,6 +19,7 @@ const RoomPDFActions = ({
 }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingAll, setIsExportingAll] = useState(false);
+  const [showDateModal, setShowDateModal] = useState(false);
   const { semesterGroup } = useSemesterGroup();
 
   const handleExportRoomSchedule = async () => {
@@ -26,12 +28,19 @@ const RoomPDFActions = ({
       return;
     }
 
+    // Show the date modal instead of directly exporting
+    setShowDateModal(true);
+  };
+
+  // Handle Export with Dates
+  const handleExportWithDates = async ({ startDate, endDate }) => {
     setIsExporting(true);
     
     try {
-      console.log('🎯 Exporting room schedule to PDF:', { roomId, roomName, semesterGroup });
+      setShowDateModal(false);
+      console.log('🎯 Exporting room schedule to PDF:', { roomId, roomName, semesterGroup, startDate, endDate });
       
-      const response = await roomsAPI.exportRoomScheduleToPDF(roomId, semesterGroup);
+      const response = await roomsAPI.exportRoomScheduleToPDF(roomId, semesterGroup, { startDate, endDate });
       
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
@@ -63,6 +72,11 @@ const RoomPDFActions = ({
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // Handle modal cancel
+  const handleModalCancel = () => {
+    setShowDateModal(false);
   };
 
   const handleExportAllRoomSchedules = async () => {
@@ -145,6 +159,16 @@ const RoomPDFActions = ({
           </Button>
         </Tooltip>
       )}
+
+      {/* Class Date Modal */}
+      <ClassDateModal
+        visible={showDateModal}
+        onOk={handleExportWithDates}
+        onCancel={handleModalCancel}
+        programCode="ROOM"
+        semester="ALL"
+        section={roomName}
+      />
     </Space>
   );
 };

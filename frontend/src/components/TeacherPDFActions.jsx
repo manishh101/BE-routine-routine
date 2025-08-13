@@ -9,6 +9,7 @@ import { FilePdfOutlined, LoadingOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import { teachersAPI } from '../services/api';
 import { useSemesterGroup } from '../contexts/SemesterGroupContext';
+import ClassDateModal from './ClassDateModal';
 
 const TeacherPDFActions = ({ 
   teacherId,
@@ -18,6 +19,7 @@ const TeacherPDFActions = ({
 }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingAll, setIsExportingAll] = useState(false);
+  const [showDateModal, setShowDateModal] = useState(false);
   const { semesterGroup } = useSemesterGroup();
 
   const handleExportTeacherSchedule = async () => {
@@ -26,12 +28,19 @@ const TeacherPDFActions = ({
       return;
     }
 
+    // Show the date modal instead of directly exporting
+    setShowDateModal(true);
+  };
+
+  // Handle Export with Dates
+  const handleExportWithDates = async ({ startDate, endDate }) => {
     setIsExporting(true);
     
     try {
-      console.log('🎯 Exporting teacher schedule to PDF:', { teacherId, teacherName, semesterGroup });
+      setShowDateModal(false);
+      console.log('🎯 Exporting teacher schedule to PDF:', { teacherId, teacherName, semesterGroup, startDate, endDate });
       
-      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId, semesterGroup);
+      const response = await teachersAPI.exportTeacherScheduleToPDF(teacherId, semesterGroup, { startDate, endDate });
       
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
@@ -63,6 +72,11 @@ const TeacherPDFActions = ({
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // Handle modal cancel
+  const handleModalCancel = () => {
+    setShowDateModal(false);
   };
 
   const handleExportAllTeachersSchedules = async () => {
@@ -145,6 +159,16 @@ const TeacherPDFActions = ({
           </Button>
         </Tooltip>
       )}
+
+      {/* Class Date Modal */}
+      <ClassDateModal
+        visible={showDateModal}
+        onOk={handleExportWithDates}
+        onCancel={handleModalCancel}
+        programCode="TEACHER"
+        semester="ALL"
+        section={teacherName}
+      />
     </Space>
   );
 };

@@ -3,10 +3,11 @@
  * Replaces Excel Actions for PDF export functionality
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button, Space } from 'antd';
 import { DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
 import usePDFOperations from '../hooks/usePDFOperations';
+import ClassDateModal from './ClassDateModal';
 
 const PDFActions = ({ 
   programCode, 
@@ -26,6 +27,8 @@ const PDFActions = ({
     exportAllSemesterToPDF
   } = usePDFOperations(programCode, semester, section);
 
+  const [showDateModal, setShowDateModal] = useState(false);
+
   // Handle All Semester Export
   const handleAllSemesterExport = async () => {
     if (demoMode) {
@@ -42,20 +45,34 @@ const PDFActions = ({
     }
   };
 
-  // Handle Export
+  // Handle Export with Date Modal
   const handleExport = async () => {
     if (demoMode) {
       return;
     }
 
+    // Show the date modal instead of directly exporting
+    setShowDateModal(true);
+  };
+
+  // Handle Export with Dates
+  const handleExportWithDates = async ({ startDate, endDate }) => {
     try {
+      setShowDateModal(false);
       await exportToPDF({
+        startDate,
+        endDate,
         onSuccess: onExportSuccess,
         onError: onExportError
       });
     } catch (error) {
       console.error('Export error:', error);
     }
+  };
+
+  // Handle modal cancel
+  const handleModalCancel = () => {
+    setShowDateModal(false);
   };
 
   // Don't render if no program selected
@@ -106,6 +123,16 @@ const PDFActions = ({
           Export All Sections
         </Button>
       )}
+
+      {/* Class Date Modal */}
+      <ClassDateModal
+        visible={showDateModal}
+        onOk={handleExportWithDates}
+        onCancel={handleModalCancel}
+        programCode={programCode}
+        semester={semester}
+        section={section}
+      />
     </Space>
   );
 };
