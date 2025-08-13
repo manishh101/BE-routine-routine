@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elective Checkbox Demo</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            padding: 20px; 
+            background-color: #f5f5f5;
+        }
+        .demo-container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .controls { 
+            display: flex; 
+            gap: 20px; 
+            margin-bottom: 30px; 
+            flex-wrap: wrap;
+        }
+        .control-group { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 5px;
+        }
+        .control-group label { 
+            font-weight: 600; 
+            color: #333;
+        }
+        select, input { 
+            padding: 8px 12px; 
+            border: 1px solid #d9d9d9; 
+            border-radius: 4px; 
+            font-size: 14px;
+        }
+        .modal-simulation { 
+            border: 2px solid #e0e0e0; 
+            border-radius: 8px; 
+            padding: 25px; 
+            margin-top: 20px; 
+            background-color: #fafafa;
+        }
+        .form-item { 
+            margin-bottom: 20px; 
+        }
+        .form-item label { 
+            display: block; 
+            margin-bottom: 8px; 
+            font-weight: 600; 
+            color: #333;
+        }
+        .checkbox-container { 
+            padding: 15px; 
+            background-color: #f0f8ff; 
+            border: 1px solid #b3d9ff; 
+            border-radius: 6px; 
+            margin: 15px 0;
+        }
+        .checkbox-container input[type="checkbox"] { 
+            margin-right: 10px; 
+            transform: scale(1.2);
+        }
+        .checkbox-label { 
+            font-weight: 600; 
+            color: #1890ff;
+        }
+        .checkbox-description { 
+            color: #666; 
+            font-size: 13px; 
+            margin-left: 25px;
+        }
+        .alert { 
+            padding: 12px; 
+            border-radius: 4px; 
+            margin: 15px 0; 
+            font-size: 14px;
+        }
+        .alert-info { 
+            background-color: #e6f7ff; 
+            border: 1px solid #91d5ff; 
+            color: #0050b3;
+        }
+        .alert-warning { 
+            background-color: #fff7e6; 
+            border: 1px solid #ffd591; 
+            color: #ad6800;
+        }
+        .hidden { 
+            display: none; 
+        }
+        .status { 
+            padding: 15px; 
+            border-radius: 6px; 
+            margin-bottom: 20px; 
+            font-weight: 600;
+        }
+        .status-visible { 
+            background-color: #f6ffed; 
+            border: 1px solid #b7eb8f; 
+            color: #389e0d;
+        }
+        .status-hidden { 
+            background-color: #fff2e8; 
+            border: 1px solid #ffbb96; 
+            color: #d46b08;
+        }
+        h1 { 
+            color: #1890ff; 
+            text-align: center; 
+            margin-bottom: 10px;
+        }
+        .subtitle { 
+            text-align: center; 
+            color: #666; 
+            margin-bottom: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🎯 Elective Checkbox Visibility Demo</h1>
+        <p class="subtitle">Interactive demonstration of the elective checkbox fix in AssignClassModal</p>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="program">Program Code:</label>
+                <select id="program">
+                    <option value="BEI">BEI</option>
+                    <option value="BCT">BCT</option>
+                    <option value="BCE">BCE</option>
+                    <option value="BAG">BAG</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="semester">Semester:</label>
+                <select id="semester">
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="classType">Class Type:</label>
+                <select id="classType">
+                    <option value="L">Lecture</option>
+                    <option value="P">Practical</option>
+                    <option value="T">Tutorial</option>
+                    <option value="BREAK">Break</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="apiStatus">API Status:</label>
+                <select id="apiStatus">
+                    <option value="error">Connection Failed</option>
+                    <option value="success">Working</option>
+                    <option value="empty">Empty Response</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="checkboxStatus" class="status"></div>
+
+        <div class="modal-simulation">
+            <h3>📋 Assign Class Modal Simulation</h3>
+            
+            <div class="form-item">
+                <label>Class Type</label>
+                <select disabled>
+                    <option id="classTypeDisplay">Lecture</option>
+                </select>
+            </div>
+
+            <!-- This is the elective checkbox section that was not appearing -->
+            <div id="electiveSection" class="checkbox-container">
+                <input type="checkbox" id="electiveCheckbox">
+                <span class="checkbox-label">Elective Class (Cross-Section)</span>
+                <div class="checkbox-description">
+                    Schedule elective for both AB and CD sections
+                </div>
+            </div>
+
+            <!-- Alert showing current mode -->
+            <div id="electiveAlert" class="alert"></div>
+
+            <div class="form-item">
+                <label>Subject <span id="subjectCount"></span></label>
+                <select disabled>
+                    <option>Select subject...</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simulate the actual logic from AssignClassModal.jsx
+        function updateElectiveVisibility() {
+            const programCode = document.getElementById('program').value;
+            const semester = document.getElementById('semester').value;
+            const classType = document.getElementById('classType').value;
+            const apiStatus = document.getElementById('apiStatus').value;
+            
+            // Update class type display
+            document.getElementById('classTypeDisplay').textContent = classType === 'L' ? 'Lecture' : 
+                                                                    classType === 'P' ? 'Practical' : 
+                                                                    classType === 'T' ? 'Tutorial' : 'Break';
+
+            // Simulate API response based on status
+            let electiveGroupsData = null;
+            let electiveGroupsError = false;
+            
+            switch(apiStatus) {
+                case 'success':
+                    electiveGroupsData = { data: [{ id: 1, name: "Elective Group 1" }] };
+                    break;
+                case 'empty':
+                    electiveGroupsData = { data: [] };
+                    break;
+                case 'error':
+                    electiveGroupsError = true;
+                    break;
+            }
+
+            // Apply the actual fix logic
+            const electiveGroups = Array.isArray(electiveGroupsData?.data) ? electiveGroupsData.data : [];
+            const hasElectiveGroupsFromAPI = electiveGroups.length > 0;
+            const hasElectiveGroupsFallback = (programCode === 'BEI' || programCode === 'BCT') && 
+                                             (semester === '7' || semester === '8');
+            const hasElectiveGroups = hasElectiveGroupsFromAPI || 
+                                     (electiveGroupsError && hasElectiveGroupsFallback);
+            const isElectiveSemester = hasElectiveGroups;
+            
+            // Additional condition: checkbox only shows when not BREAK
+            const shouldShowCheckbox = isElectiveSemester && classType !== 'BREAK';
+
+            // Update UI
+            const electiveSection = document.getElementById('electiveSection');
+            const electiveAlert = document.getElementById('electiveAlert');
+            const checkboxStatus = document.getElementById('checkboxStatus');
+            const subjectCount = document.getElementById('subjectCount');
+
+            if (shouldShowCheckbox) {
+                electiveSection.classList.remove('hidden');
+                checkboxStatus.className = 'status status-visible';
+                checkboxStatus.innerHTML = `✅ <strong>Elective Checkbox VISIBLE</strong><br>
+                    Program: ${programCode}, Semester: ${semester}, Class: ${classType}<br>
+                    API Status: ${apiStatus}, Using Fallback: ${electiveGroupsError && hasElectiveGroupsFallback}`;
+                
+                if (document.getElementById('electiveCheckbox').checked) {
+                    electiveAlert.className = 'alert alert-info';
+                    electiveAlert.innerHTML = '🎯 <strong>Elective Mode Active</strong><br>Only elective subjects will be shown.';
+                    subjectCount.textContent = '(Showing elective subjects)';
+                } else {
+                    electiveAlert.className = 'alert alert-warning';
+                    electiveAlert.innerHTML = '📚 <strong>Core Subject Mode Active</strong><br>Only core subjects will be shown.';
+                    subjectCount.textContent = '(Showing core subjects)';
+                }
+                electiveAlert.classList.remove('hidden');
+            } else {
+                electiveSection.classList.add('hidden');
+                electiveAlert.classList.add('hidden');
+                checkboxStatus.className = 'status status-hidden';
+                checkboxStatus.innerHTML = `❌ <strong>Elective Checkbox HIDDEN</strong><br>
+                    Program: ${programCode}, Semester: ${semester}, Class: ${classType}<br>
+                    Reason: ${classType === 'BREAK' ? 'Break class selected' : 
+                             !isElectiveSemester ? 'Not an elective semester' : 'Unknown'}`;
+                subjectCount.textContent = '';
+            }
+        }
+
+        // Event listeners
+        document.getElementById('program').addEventListener('change', updateElectiveVisibility);
+        document.getElementById('semester').addEventListener('change', updateElectiveVisibility);
+        document.getElementById('classType').addEventListener('change', updateElectiveVisibility);
+        document.getElementById('apiStatus').addEventListener('change', updateElectiveVisibility);
+        document.getElementById('electiveCheckbox').addEventListener('change', updateElectiveVisibility);
+
+        // Initialize
+        updateElectiveVisibility();
+    </script>
+</body>
+</html>
