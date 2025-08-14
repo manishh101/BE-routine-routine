@@ -217,13 +217,12 @@ class UnifiedPDFService {
         // Check if current context should show winter timing
         if (shouldShowWinterTiming && timeSlot.winterTiming?.startTime && timeSlot.winterTiming?.endTime) {
           // Show both summer and winter timing
-          headerText = `${timeSlot.startTime}-${timeSlot.endTime}\nW: ${timeSlot.winterTiming.startTime}-${timeSlot.winterTiming.endTime}`;
+          headerText = `${timeSlot.startTime}-${timeSlot.endTime}\n${timeSlot.winterTiming.startTime}-${timeSlot.winterTiming.endTime}`;
         } else {
           // Show only summer timing
           headerText = `${timeSlot.startTime}-${timeSlot.endTime}`;
         }
       }
-      
       this._drawCell(doc, x, startY, timeColumnWidth, headerRowHeight, headerText, '#f0f0f0', true);
     });
 
@@ -536,6 +535,7 @@ class UnifiedPDFService {
     // Standard subject spanning
     const firstSlot = span.slots[0];
     const subjectName = firstSlot.subjectName_display || firstSlot.subjectId?.name || 'N/A';
+    const wrappedSubjectName = this._wrapText(subjectName, 20); // Apply consistent text wrapping
     const classType = this._getClassTypeText(firstSlot.classType, firstSlot.isElectiveClass);
     
     const teacherNames = pdfType === 'teacher' ? '' : (
@@ -555,15 +555,15 @@ class UnifiedPDFService {
     }
     
     if (pdfType === 'teacher') {
-      return roomName ? `${labGroupIndicator}${subjectName} [${classType}]\n${roomName}` : `${labGroupIndicator}${subjectName} [${classType}]`;
+      return roomName ? `${labGroupIndicator}${wrappedSubjectName} [${classType}]\n${roomName}` : `${labGroupIndicator}${wrappedSubjectName} [${classType}]`;
     } else if (pdfType === 'room') {
       const section = `${firstSlot.programCode}-${firstSlot.semester}${firstSlot.section}`;
-      return teacherNames ? `${section}\n${labGroupIndicator}${subjectName} [${classType}]\n${teacherNames}` : `${section}\n${labGroupIndicator}${subjectName} [${classType}]`;
+      return teacherNames ? `${section}\n${labGroupIndicator}${wrappedSubjectName} [${classType}]\n${teacherNames}` : `${section}\n${labGroupIndicator}${wrappedSubjectName} [${classType}]`;
     } else {
       if (firstSlot.classType === 'P') {
-        return roomName ? `${labGroupIndicator}${subjectName} [${classType}]\n${teacherNames} | ${roomName}` : `${labGroupIndicator}${subjectName} [${classType}]\n${teacherNames}`;
+        return roomName ? `${labGroupIndicator}${wrappedSubjectName} [${classType}]\n${teacherNames} | ${roomName}` : `${labGroupIndicator}${wrappedSubjectName} [${classType}]\n${teacherNames}`;
       } else {
-        return `${labGroupIndicator}${subjectName} [${classType}]\n${teacherNames}`;
+        return `${labGroupIndicator}${wrappedSubjectName} [${classType}]\n${teacherNames}`;
       }
     }
   }
@@ -778,55 +778,8 @@ class UnifiedPDFService {
       labGroupIndicator = ` (${slot.labGroup})`;
     }
     
-    // ENHANCED: Intelligent text wrapping for better readability with larger fonts
-    let wrappedSubjectName = subjectName;
-    const maxLineLength = 20; // Adjusted for larger font sizes
-    const fullSubjectText = subjectName + labGroupIndicator;
-    
-    if (fullSubjectText.length > maxLineLength) {
-      const words = subjectName.split(' ');
-      if (words.length >= 2) {
-        // ENHANCED: Smart line breaking for multi-word subjects
-        if (words.length === 2) {
-          // Two words - put each on separate line
-          wrappedSubjectName = words.join('\n');
-        } else if (words.length === 3) {
-          // Three words - try 2+1 or 1+2 split based on length
-          const option1 = `${words[0]} ${words[1]}\n${words[2]}`;
-          const option2 = `${words[0]}\n${words[1]} ${words[2]}`;
-          const option1MaxLine = Math.max(words[0].length + words[1].length + 1, words[2].length);
-          const option2MaxLine = Math.max(words[0].length, words[1].length + words[2].length + 1);
-          wrappedSubjectName = option1MaxLine <= option2MaxLine ? option1 : option2;
-        } else {
-          // Four or more words - split roughly in half
-          const midPoint = Math.ceil(words.length / 2);
-          const firstLine = words.slice(0, midPoint).join(' ');
-          const secondLine = words.slice(midPoint).join(' ');
-          wrappedSubjectName = `${firstLine}\n${secondLine}`;
-        }
-      } else if (subjectName.includes('&')) {
-        // Handle subjects with "&" by breaking at that point
-        wrappedSubjectName = subjectName.replace(' & ', '\n& ');
-      } else if (subjectName.includes('-')) {
-        // Handle subjects with "-" by breaking at that point
-        wrappedSubjectName = subjectName.replace(' - ', '\n- ');
-      } else if (subjectName.includes(',')) {
-        // Handle subjects with "," by breaking at that point
-        wrappedSubjectName = subjectName.replace(', ', ',\n');
-      } else if (subjectName.length > 25) {
-        // Very long single word - break in middle
-        const midPoint = Math.floor(subjectName.length / 2);
-        // Try to break at a vowel or common letter
-        let breakPoint = midPoint;
-        for (let i = midPoint; i < Math.min(midPoint + 5, subjectName.length - 3); i++) {
-          if ('aeiouAEIOU'.includes(subjectName[i])) {
-            breakPoint = i + 1;
-            break;
-          }
-        }
-        wrappedSubjectName = `${subjectName.substring(0, breakPoint)}\n${subjectName.substring(breakPoint)}`;
-      }
-    }
+    // Use the helper function for consistent text wrapping
+    const wrappedSubjectName = this._wrapText(subjectName, 20);
     
     if (pdfType === 'teacher') {
       return (roomDisplayName && roomDisplayName !== 'TBA') ? `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${roomDisplayName}` : `${wrappedSubjectName}${labGroupIndicator} [${classType}]`;
@@ -849,6 +802,61 @@ class UnifiedPDFService {
         return `${wrappedSubjectName}${labGroupIndicator} [${classType}]\n${teacherNames}`;
       }
     }
+  }
+
+  /**
+   * Helper function for intelligent text wrapping
+   * Extracted from _formatCellContent for consistent use across all cell types
+   */
+  _wrapText(text, maxLineLength = 20) {
+    if (!text || text.length <= maxLineLength) {
+      return text;
+    }
+
+    const words = text.split(' ');
+    if (words.length >= 2) {
+      // ENHANCED: Smart line breaking for multi-word subjects
+      if (words.length === 2) {
+        // Two words - put each on separate line
+        return words.join('\n');
+      } else if (words.length === 3) {
+        // Three words - try 2+1 or 1+2 split based on length
+        const option1 = `${words[0]} ${words[1]}\n${words[2]}`;
+        const option2 = `${words[0]}\n${words[1]} ${words[2]}`;
+        const option1MaxLine = Math.max(words[0].length + words[1].length + 1, words[2].length);
+        const option2MaxLine = Math.max(words[0].length, words[1].length + words[2].length + 1);
+        return option1MaxLine <= option2MaxLine ? option1 : option2;
+      } else {
+        // Four or more words - split roughly in half
+        const midPoint = Math.ceil(words.length / 2);
+        const firstLine = words.slice(0, midPoint).join(' ');
+        const secondLine = words.slice(midPoint).join(' ');
+        return `${firstLine}\n${secondLine}`;
+      }
+    } else if (text.includes('&')) {
+      // Handle subjects with "&" by breaking at that point
+      return text.replace(' & ', '\n& ');
+    } else if (text.includes('-')) {
+      // Handle subjects with "-" by breaking at that point
+      return text.replace(' - ', '\n- ');
+    } else if (text.includes(',')) {
+      // Handle subjects with "," by breaking at that point
+      return text.replace(', ', ',\n');
+    } else if (text.length > 25) {
+      // Very long single word - break in middle
+      const midPoint = Math.floor(text.length / 2);
+      // Try to break at a vowel or common letter
+      let breakPoint = midPoint;
+      for (let i = midPoint; i < Math.min(midPoint + 5, text.length - 3); i++) {
+        if ('aeiouAEIOU'.includes(text[i])) {
+          breakPoint = i + 1;
+          break;
+        }
+      }
+      return `${text.substring(0, breakPoint)}\n${text.substring(breakPoint)}`;
+    }
+    
+    return text;
   }
 
   /**
@@ -2154,6 +2162,7 @@ class UnifiedPDFService {
 
       groups.forEach(subject => {
         const classType = this._getClassTypeText(subject.classType);
+        const wrappedSubjectName = this._wrapText(subject.subjectName, 20); // Apply consistent wrapping
         
         if (subject.isConsolidated) {
           // Multiple groups for same subject - show as merged multi-group class
@@ -2164,19 +2173,19 @@ class UnifiedPDFService {
           if (pdfType === 'teacher') {
             // Teacher PDF: Show subject with group info and rooms (only for practical classes)
             const rooms = subject.roomNames.join(' / ');
-            const content = rooms ? `(${groupLabels}) ${subject.subjectName} [${classType}]\n${rooms}` : `(${groupLabels}) ${subject.subjectName} [${classType}]`;
+            const content = rooms ? `(${groupLabels}) ${wrappedSubjectName} [${classType}]\n${rooms}` : `(${groupLabels}) ${wrappedSubjectName} [${classType}]`;
             formattedSubjects.push(content);
           } else if (pdfType === 'room') {
             // Room PDF: Show subject with group info and teachers with section
             const teachers = subject.teacherShortNames.join(' / ');
             const sectionTeacherLine = teachers ? `${subject.programSemesterSection} | ${teachers}` : subject.programSemesterSection;
-            const content = `(${groupLabels}) ${subject.subjectName} [${classType}]\n${sectionTeacherLine}`;
+            const content = `(${groupLabels}) ${wrappedSubjectName} [${classType}]\n${sectionTeacherLine}`;
             formattedSubjects.push(content);
           } else {
             // Class PDF: Show merged groups with teachers and rooms (rooms only for practical classes)
             const teachersLine = subject.teacherShortNames.join(', ');
             const roomsLine = subject.roomNames.join(', ');
-            const content = roomsLine ? `(${groupLabels}) ${subject.subjectName} [${classType}]\n${teachersLine} | ${roomsLine}` : `(${groupLabels}) ${subject.subjectName} [${classType}]\n${teachersLine}`;
+            const content = roomsLine ? `(${groupLabels}) ${wrappedSubjectName} [${classType}]\n${teachersLine} | ${roomsLine}` : `(${groupLabels}) ${wrappedSubjectName} [${classType}]\n${teachersLine}`;
             formattedSubjects.push(content);
           }
         } else {
@@ -2186,19 +2195,19 @@ class UnifiedPDFService {
           if (pdfType === 'teacher') {
             // Teacher PDF: Show subject and room only (no teacher names)
             const room = subject.roomNames[0] || '';
-            const content = room ? `${labGroupInfo} ${subject.subjectName} [${classType}]\n${room}` : `${labGroupInfo} ${subject.subjectName} [${classType}]`;
+            const content = room ? `${labGroupInfo} ${wrappedSubjectName} [${classType}]\n${room}` : `${labGroupInfo} ${wrappedSubjectName} [${classType}]`;
             formattedSubjects.push(content);
           } else if (pdfType === 'room') {
             // Room PDF: Show subject and teacher with section info (no room names)
             const teacher = subject.teacherShortNames[0] || '';
             const sectionTeacherLine = teacher ? `${subject.programSemesterSection} | ${teacher}` : subject.programSemesterSection;
-            const content = `${labGroupInfo} ${subject.subjectName} [${classType}]\n${sectionTeacherLine}`;
+            const content = `${labGroupInfo} ${wrappedSubjectName} [${classType}]\n${sectionTeacherLine}`;
             formattedSubjects.push(content);
           } else {
             // Class PDF: Show teacher and room side by side for practical classes
             const teacher = subject.teacherShortNames[0] || '';
             const room = subject.roomNames[0] || '';
-            const content = room ? `${labGroupInfo} ${subject.subjectName} [${classType}]\n${teacher} | ${room}` : `${labGroupInfo} ${subject.subjectName} [${classType}]\n${teacher}`;
+            const content = room ? `${labGroupInfo} ${wrappedSubjectName} [${classType}]\n${teacher} | ${room}` : `${labGroupInfo} ${wrappedSubjectName} [${classType}]\n${teacher}`;
             formattedSubjects.push(content);
           }
         }
@@ -2214,23 +2223,8 @@ class UnifiedPDFService {
     groups.forEach((group, index) => {
       let content = '';
       
-      // Enhanced text wrapping for long subject names (from OLD service)
-      let wrappedSubjectName = group.subjectName;
-      const maxLineLength = 24;
-      
-      if (group.subjectName.length > maxLineLength) {
-        const words = group.subjectName.split(' ');
-        if (words.length >= 2) {
-          const midPoint = Math.ceil(words.length / 2);
-          const firstLine = words.slice(0, midPoint).join(' ');
-          const secondLine = words.slice(midPoint).join(' ');
-          wrappedSubjectName = `${firstLine}\n${secondLine}`;
-        } else if (group.subjectName.includes('&')) {
-          wrappedSubjectName = group.subjectName.replace(' & ', '\n& ');
-        } else if (group.subjectName.includes('-')) {
-          wrappedSubjectName = group.subjectName.replace(' - ', '\n- ');
-        }
-      }
+      // Use consistent text wrapping helper function
+      const wrappedSubjectName = this._wrapText(group.subjectName, 24);
       
       // Enhanced lab group indicator
       const labGroupIndicator = group.labGroup && group.labGroup !== 'ALL' ? ` (${group.labGroup})` : '';
