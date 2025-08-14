@@ -185,7 +185,8 @@ exports.deleteRoom = async (req, res) => {
       });
     }
 
-    await room.remove();
+    // Use findByIdAndDelete instead of deprecated remove()
+    await Room.findByIdAndDelete(req.params.id);
 
     res.json({
       success: true,

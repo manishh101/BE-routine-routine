@@ -303,12 +303,35 @@ const RoutineGrid = ({
             return aOrder - bOrder;
           });
           
-          // Create a combined class object for display
-          groupedRoutine[dayIndex][slotIndex] = {
-            ...sortedClasses[0], // Use first class as base
-            isMultiGroup: true,
-            groups: sortedClasses
-          };
+          // Check if all groups have identical subject, teacher, and room
+          const areIdentical = sortedClasses.length > 1 && sortedClasses.every(group => {
+            const first = sortedClasses[0];
+            return group.subjectName === first.subjectName &&
+                   group.subjectCode === first.subjectCode &&
+                   JSON.stringify(group.teacherNames) === JSON.stringify(first.teacherNames) &&
+                   JSON.stringify(group.teacherShortNames) === JSON.stringify(first.teacherShortNames) &&
+                   group.roomName === first.roomName &&
+                   group.classType === first.classType;
+          });
+          
+          if (areIdentical) {
+            // Merge identical groups into a single display
+            const mergedGroup = {
+              ...sortedClasses[0], // Use first class as base
+              labGroup: `(${sortedClasses.map(g => g.labGroup).join(' & ')})`, // Combine group labels
+              isMultiGroup: false, // Set to false to display as single merged group
+              groups: sortedClasses, // Keep original groups for reference
+              isMergedGroup: true // Flag to indicate this is a merged display
+            };
+            groupedRoutine[dayIndex][slotIndex] = mergedGroup;
+          } else {
+            // Create a combined class object for display with separate groups
+            groupedRoutine[dayIndex][slotIndex] = {
+              ...sortedClasses[0], // Use first class as base
+              isMultiGroup: true,
+              groups: sortedClasses
+            };
+          }
         } else if (slotData.isAlternativeWeek && slotData.alternateGroupData) {
           // Handle alternate weeks lab - create display for both groups based on section
           const section = slotData.section || 'AB';
@@ -474,6 +497,11 @@ const RoutineGrid = ({
   // Helper function to generate lab group display labels
   const getLabGroupLabel = (classData, group = null) => {
     const isAltWeek = classData.isAlternativeWeek === true;
+    
+    // For merged groups (when same subject, teacher, room for both groups)
+    if (classData.isMergedGroup && classData.labGroup) {
+      return isAltWeek ? `(${classData.labGroup} - Alt Week)` : `(${classData.labGroup})`;
+    }
     
     // For multi-group classes, use the individual group data
     if (group) {
@@ -1346,8 +1374,8 @@ const RoutineGrid = ({
           fontSize: '13px'
         }}>
           {getSubjectDisplayText(classData)}
-          {/* Show lab group indicator for practical classes or alternative week classes */}
-          {(classData.classType === 'P' || classData.isAlternativeWeek === true) && classData.labGroup && (
+          {/* Show lab group indicator for practical classes, alternative week classes, or merged groups */}
+          {((classData.classType === 'P' || classData.isAlternativeWeek === true) && classData.labGroup) || classData.isMergedGroup && (
             <span style={{ 
               fontSize: '10px', 
               marginLeft: '4px',

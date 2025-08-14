@@ -210,33 +210,84 @@ const AssignClassModal = ({
   const rooms = Array.isArray(roomsData?.data?.data) ? roomsData.data.data :
                Array.isArray(roomsData?.data) ? roomsData.data : [];
 
+  // Debug subjects data structure
+  if (subjects.length > 0) {
+    console.log('🔍 Subjects data sample:', {
+      total: subjects.length,
+      firstSubject: subjects[0],
+      subjectStructure: Object.keys(subjects[0] || {}),
+      programCode
+    });
+  }
+
   // Function to check if a subject is an elective based on program and subject code
-  const isElectiveSubject = useCallback((subject, programCode) => {
-    if (!subject || !subject.code) return false;
-    
-    const code = subject.code.toUpperCase();
-    
-    if (programCode === 'BEI') {
-      // BEI elective patterns from semester 7 & 8
-      return code.match(/^(CT725|CT765|CT785|EX725|EX765|EX785|EE785)-?\d+$/);
-    } else if (programCode === 'BCT') {
-      // BCT elective patterns from semester 7 & 8
-      return code.match(/^(CT72[5-9]|CT76[0-9]|CT78[0-9]|EE72[0-9]|EX72[0-9]|EX76[0-9]|EX78[0-9])\d+$/);
+  const isElectiveSubject = useCallback((subjectCode, programCode, semester) => {
+    if (!subjectCode) {
+      console.log('🔍 isElectiveSubject: Missing subject code', { subjectCode, programCode });
+      return false;
     }
     
+    const code = subjectCode;
+    console.log('🔍 isElectiveSubject checking:', { code, programCode, semester });
+    
+    if (programCode === 'BEI') {
+      // BEI electives based on actual database data:
+      // Semester 7: CT725-XX (e.g., CT725-01, CT725-02, etc.)
+      // Semester 8: CT765-XX, CT785-XX (e.g., CT765-01, CT785-01, etc.)
+      const isElective = /^(CT725-\d+|CT765-\d+|CT785-\d+|EX725-\d+|EX765-\d+|EX785-\d+|EE785-\d+)$/.test(code);
+      console.log('🔍 BEI pattern check:', { code, isElective, pattern: 'CT725-XX|CT765-XX|CT785-XX|EX725-XX|EX765-XX|EX785-XX|EE785-XX' });
+      return isElective;
+    } else if (programCode === 'BCT') {
+      // BCT electives based on actual database data:
+      // Semester 7: CT759-CT764, EX759-EX763
+      // Semester 8: CT801-CT805, CT821-CT826, EX801-EX803, EX821-EX822, EE821
+      const isElective = /^(CT(759|76[0-4]|80[1-5]|82[1-6])|EX(759|76[0-3]|80[1-3]|82[1-2])|EE821)$/.test(code);
+      console.log('🔍 BCT pattern check:', { code, isElective, pattern: 'CT(759|76[0-4]|80[1-5]|82[1-6])|EX(759|76[0-3]|80[1-3]|82[1-2])|EE821' });
+      return isElective;
+    }
+    
+    console.log('🔍 No program match:', { programCode });
     return false;
   }, []);
 
   // Function to get filtered subjects for elective mode
   const getFilteredSubjects = useCallback(() => {
+    console.log('🔍 getFilteredSubjects called:', {
+      isElectiveClass,
+      programCode,
+      semester,
+      totalSubjects: subjects.length,
+      sampleSubject: subjects[0]
+    });
+
     if (!isElectiveClass) {
-      // Normal mode: show all subjects for the semester
-      return subjects;
+      // Normal mode: show only core subjects (exclude electives)
+      const coreSubjects = subjects.filter(subject => {
+        const subjectCode = subject.code || subject.subjectCode;
+        const isElective = isElectiveSubject(subjectCode, programCode, semester);
+        console.log(`Subject ${subjectCode}: ${isElective ? 'ELECTIVE (excluded)' : 'CORE (included)'}`);
+        return !isElective;
+      });
+      console.log('🔍 Core subjects filtered:', {
+        original: subjects.length,
+        filtered: coreSubjects.length,
+        removed: subjects.length - coreSubjects.length
+      });
+      return coreSubjects;
     } else {
       // Elective mode: show only elective subjects
-      return subjects.filter(subject => isElectiveSubject(subject, programCode));
+      const electiveSubjects = subjects.filter(subject => {
+        const subjectCode = subject.code || subject.subjectCode;
+        const isElective = isElectiveSubject(subjectCode, programCode, semester);
+        return isElective;
+      });
+      console.log('🔍 Elective subjects filtered:', {
+        original: subjects.length,
+        filtered: electiveSubjects.length
+      });
+      return electiveSubjects;
     }
-  }, [subjects, isElectiveClass, isElectiveSubject, programCode]);
+  }, [subjects, isElectiveClass, isElectiveSubject, programCode, semester]);
 
   // Search filter functions
   const filterTeachersBySearch = useCallback((teachers, searchText) => {
@@ -309,7 +360,7 @@ const AssignClassModal = ({
       })));
     }
     setChecking(false);
-  }, [teachers, dayIndex, slotIndex]);
+  }, [teachers, dayIndex, slotIndex, semester]);
 
   // Filter rooms based on availability
   const filterRoomsBasedOnAvailability = useCallback(async () => {
@@ -440,7 +491,7 @@ const AssignClassModal = ({
         })));
       }
     }
-  }, [visible, teachers.length, currentClassType, dayIndex, slotIndex, filterTeachersBasedOnClassType]); // Using teachers.length and function ref
+  }, [visible, teachers.length, currentClassType, dayIndex, slotIndex]); // Removed filterTeachersBasedOnClassType from dependencies
 
   // Update room availability when modal opens or relevant parameters change
   useEffect(() => {
@@ -467,13 +518,17 @@ const AssignClassModal = ({
       // Reset the ref when modal closes
       teachersInitializedRef.current = false;
     }
-  }, [visible, teachers.length, isElectiveClass, currentClassType, filterTeachersBasedOnClassType]);
+  }, [visible, teachers.length, isElectiveClass, currentClassType]); // Removed filterTeachersBasedOnClassType from dependencies
 
   // Update filtered rooms when search text or rooms data changes
   useEffect(() => {
-    const searchFiltered = filterRoomsBySearch(availableRooms.length > 0 ? availableRooms : rooms, roomSearchText);
+    const roomsToFilter = availableRooms.length > 0 ? availableRooms : rooms;
+    const searchFiltered = roomsToFilter.filter(room => 
+      room.name?.toLowerCase().includes(roomSearchText.toLowerCase()) ||
+      room.roomName?.toLowerCase().includes(roomSearchText.toLowerCase())
+    );
     setFilteredRoomsForSearch(searchFiltered);
-  }, [rooms, availableRooms, roomSearchText, filterRoomsBySearch]);
+  }, [rooms, availableRooms, roomSearchText]);
 
   // Reset search states when modal visibility changes
   useEffect(() => {
@@ -598,7 +653,7 @@ const AssignClassModal = ({
         reason: 'Select class type to check availability'
       })));
     }
-  }, [existingClass, visible, teachers.length, filterTeachersBasedOnClassType, form, slotIndex]);
+  }, [existingClass, visible, teachers.length, form, slotIndex]); // Removed filterTeachersBasedOnClassType from dependencies
 
   // Check for conflicts when form values change
   const checkAllConflicts = async (values) => {
@@ -1443,8 +1498,13 @@ const AssignClassModal = ({
                     label={useSameConfigForBothGroups ? "Subject (For Both Groups)" : "Subject"} 
                     rules={[{ required: true }]}
                   >
-                    <Select placeholder="Select subject" loading={subjectsLoading} showSearch>
-                      {subjects.map(s => <Option key={`ga-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}
+                    <Select 
+                      key={`subject-dropdown-ga-${isElectiveClass}-${subjects.length}`}
+                      placeholder="Select subject" 
+                      loading={subjectsLoading} 
+                      showSearch
+                    >
+                      {getFilteredSubjects().map(s => <Option key={`ga-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}
                     </Select>
                   </Form.Item>
                 </Col>
@@ -1563,12 +1623,13 @@ const AssignClassModal = ({
                     rules={[{ required: !useSameConfigForBothGroups }]}
                   >
                     <Select 
+                      key={`subject-dropdown-gb-${isElectiveClass}-${subjects.length}`}
                       placeholder={useSameConfigForBothGroups ? "Same subject as Group A" : "Select subject"} 
                       loading={subjectsLoading} 
                       showSearch
                       disabled={useSameConfigForBothGroups}
                     >
-                      {subjects.map(s => <Option key={`gb-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}
+                      {getFilteredSubjects().map(s => <Option key={`gb-${s.subjectId}`} value={s.subjectId}>{s.subjectName_display}</Option>)}
                     </Select>
                   </Form.Item>
                 </Col>
@@ -1896,11 +1957,22 @@ const AssignClassModal = ({
                   <Col span={24}>
                     <Form.Item name="subjectId" label="Subject" rules={[{ required: true }]}>
                       <Select 
+                        key={`subject-dropdown-${isElectiveClass}-${subjects.length}`}
                         placeholder="Select subject" 
                         loading={subjectsLoading} 
                         showSearch
+                        onDropdownVisibleChange={(open) => {
+                          if (open) {
+                            const filtered = getFilteredSubjects();
+                            console.log('🔍 Dropdown opened with filtered subjects:', {
+                              count: filtered.length,
+                              isElectiveClass,
+                              subjects: filtered.slice(0, 5).map(s => ({ code: s.subjectCode, name: s.subjectName_display }))
+                            });
+                          }
+                        }}
                       >
-                        {subjects.map(s => (
+                        {getFilteredSubjects().map(s => (
                           <Option key={s.subjectId} value={s.subjectId}>
                             {s.subjectName_display}
                           </Option>

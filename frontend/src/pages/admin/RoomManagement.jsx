@@ -9,7 +9,6 @@ import {
   Input,
   Select,
   InputNumber,
-  message,
   Popconfirm,
   Tag,
   Typography,
@@ -17,7 +16,8 @@ import {
   Col,
   Tooltip,
   Divider,
-  Alert
+  Alert,
+  App
 } from 'antd';
 import {
   PlusOutlined,
@@ -53,6 +53,7 @@ const DAYS_OF_WEEK = [
 ];
 
 const RoomManagement = () => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRoom, setEditingRoom] = useState(null);
@@ -220,24 +221,22 @@ const RoomManagement = () => {
                 Edit
               </Button>
               <Popconfirm
-              title="Delete Room"
-              description="Are you sure you want to delete this room?"
-              onConfirm={() => handleDelete(record)}
-              okText="Yes"
-              cancelText="No"
-            >
-              <Button 
-                //type="primary" 
-                danger 
-                ghost
-                size="small" 
-                icon={<DeleteOutlined />}
-                onClick={() => handleDelete(record)}
-                style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
+                title="Delete Room"
+                description="Are you sure you want to delete this room?"
+                onConfirm={() => handleDelete(record)}
+                okText="Yes"
+                cancelText="No"
               >
-                Delete
-              </Button>
-                </Popconfirm>
+                <Button 
+                  danger 
+                  ghost
+                  size="small" 
+                  icon={<DeleteOutlined />}
+                  style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
+                >
+                  Delete
+                </Button>
+              </Popconfirm>
             </Space>
           )
         }
