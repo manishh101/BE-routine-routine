@@ -526,7 +526,8 @@ const RoutineGrid = ({
   };
 
   const getClassTypeText = (classType) => {
-    console.log('🔍 getClassTypeText called with:', classType);
+    // For elective classes, always show 'Practical'
+    // This function is called with only classType, so we need to handle elective in the display logic below
     switch (classType) {
       case 'L': return 'Lecture';
       case 'P': return 'Practical';
@@ -1252,7 +1253,13 @@ const RoutineGrid = ({
                   color: '#666',
                   marginBottom: '1px'
                 }}>
-                  [{getClassTypeText(group.classType)}]
+                  {(() => {
+                    // If elective, always show [Practical]
+                    if (classData.isElectiveClass) {
+                      return '[Practical]';
+                    }
+                    return `[${getClassTypeText(group.classType)}]`;
+                  })()}
                 </div>
                 
                 {/* Teacher */}
@@ -1360,9 +1367,10 @@ const RoutineGrid = ({
           marginBottom: '2px'
         }}>
           {(() => {
-            console.log('🔍 Rendering class type for:', classData);
-            console.log('🔍 classData.classType:', classData.classType);
-            console.log('🔍 classData.isElectiveClass:', classData.isElectiveClass);
+            // If elective, always show [Practical]
+            if (classData.isElectiveClass) {
+              return '[Practical]';
+            }
             return `[${getClassTypeText(classData.classType)}]`;
           })()}
         </div>

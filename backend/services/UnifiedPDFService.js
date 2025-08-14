@@ -536,7 +536,7 @@ class UnifiedPDFService {
     // Standard subject spanning
     const firstSlot = span.slots[0];
     const subjectName = firstSlot.subjectName_display || firstSlot.subjectId?.name || 'N/A';
-    const classType = this._getClassTypeText(firstSlot.classType);
+    const classType = this._getClassTypeText(firstSlot.classType, firstSlot.isElectiveClass);
     
     const teacherNames = pdfType === 'teacher' ? '' : (
       firstSlot.teacherShortNames_display?.join(', ') || 
@@ -753,7 +753,7 @@ class UnifiedPDFService {
     }
     
     const subjectName = slot.subjectName_display || slot.subjectId?.name || 'N/A';
-    const classType = this._getClassTypeText(slot.classType);
+    const classType = this._getClassTypeText(slot.classType, slot.isElectiveClass);
     
     const teacherNames = pdfType === 'teacher' ? '' : (
       slot.teacherShortNames_display?.join(', ') || 
@@ -2287,7 +2287,7 @@ class UnifiedPDFService {
     const displaySubject = subjectCode ? `${subjectCode} - ${subjectName}` : subjectName;
     
     content += `${displaySubject}\n`;
-    content += `[${this._getClassTypeText(slot.classType)}]\n`;
+    content += `[${this._getClassTypeText(slot.classType, slot.isElectiveClass)}]\n`;
     
     if (pdfType !== 'teacher') {
       const teachers = slot.teacherIds?.map(t => 
@@ -2323,7 +2323,12 @@ class UnifiedPDFService {
   /**
    * Get class type text matching frontend and OLD service formatting
    */
-  _getClassTypeText(classType) {
+  _getClassTypeText(classType, isElectiveClass = false) {
+    // For elective classes, always show 'P' (Practical)
+    if (isElectiveClass) {
+      return 'P';
+    }
+    
     switch (classType) {
       case 'L': return 'L';
       case 'P': return 'P';
