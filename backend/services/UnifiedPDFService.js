@@ -158,6 +158,12 @@ class UnifiedPDFService {
     console.log(`🔄 Starting UNIFIED PDF generation for ${pdfType} with FIXED time slot mapping...`);
     console.log(`TimeSlots: ${timeSlots.length}, RoutineSlots: ${routineSlots.length}`);
     
+    // Check if this is a single time slot routine (very compact schedule)
+    const isSingleTimeSlot = timeSlots.length === 1;
+    if (isSingleTimeSlot) {
+      console.log(`📏 Single time slot routine detected - using smaller fonts`);
+    }
+    
     // DEBUG: Log all time slots being used for PDF generation
     console.log(`📋 Time slots for PDF generation:`);
     timeSlots.forEach((slot, index) => {
@@ -205,7 +211,7 @@ class UnifiedPDFService {
 
     // Step 2: Draw header row with dual timing support
     doc.fontSize(8.5).font('Helvetica-Bold'); // Same size as content
-    this._drawCell(doc, startX, startY, dayColumnWidth, headerRowHeight, '', '#f0f0f0', true);
+    this._drawCell(doc, startX, startY, dayColumnWidth, headerRowHeight, '', '#f0f0f0', true, false, isSingleTimeSlot);
     
     timeSlots.forEach((timeSlot, index) => {
       const x = startX + dayColumnWidth + (index * timeColumnWidth);
@@ -223,7 +229,7 @@ class UnifiedPDFService {
           headerText = `${timeSlot.startTime}-${timeSlot.endTime}`;
         }
       }
-      this._drawCell(doc, x, startY, timeColumnWidth, headerRowHeight, headerText, '#f0f0f0', true);
+      this._drawCell(doc, x, startY, timeColumnWidth, headerRowHeight, headerText, '#f0f0f0', true, false, isSingleTimeSlot);
     });
 
     // Step 3: Draw day rows
@@ -232,7 +238,7 @@ class UnifiedPDFService {
       
       // Day name cell with consistent 8.5pt font size
       doc.fontSize(8.5).font('Helvetica-Bold'); // Same size as content
-      this._drawCell(doc, startX, y, dayColumnWidth, rowHeight, day, '#f8f8f8', true);
+      this._drawCell(doc, startX, y, dayColumnWidth, rowHeight, day, '#f8f8f8', true, false, isSingleTimeSlot);
       
       // Time slot cells for this day
       const daySpans = spanningClasses.get(dayIndex);
@@ -314,7 +320,7 @@ class UnifiedPDFService {
         }
         
         if (cellContent !== '' || !spanInfo) {
-          this._drawCell(doc, x, y, cellWidth, rowHeight, cellContent, bgColor, false, isLab);
+          this._drawCell(doc, x, y, cellWidth, rowHeight, cellContent, bgColor, false, isLab, isSingleTimeSlot);
         }
       });
     });
@@ -894,13 +900,25 @@ class UnifiedPDFService {
     
     doc.moveDown(0.3);
     
+    // Add class name with Roman numerals for class routine PDFs
+    if (programCode && semester && section && !title) {
+      const className = this._generateClassName(programCode, parseInt(semester), section);
+      doc.fontSize(9).font('Helvetica-Bold')
+         .text(className, leftMargin, doc.y, { 
+           align: 'center',
+           width: pageWidth 
+         });
+      
+      doc.moveDown(0.2);
+    }
+    
     if (title) {
       doc.fontSize(8).font('Helvetica-Bold')
          .text(title, leftMargin, doc.y, { 
            align: 'center',
            width: pageWidth 
          });
-    } else if (programCode) {
+    } else if (programCode && !semester) {
       doc.fontSize(8).font('Helvetica-Bold')
          .text(`${programCode} - ${programName || 'Program'}`, leftMargin, doc.y, { 
            align: 'center',
@@ -920,7 +938,7 @@ class UnifiedPDFService {
     if (startDate && endDate) {
       const currentY = doc.y;
       
-      doc.fontSize(7).font('Helvetica-Bold')
+      doc.fontSize(8).font('Helvetica-Bold')
          .fillColor('#333333')
          .text('Class Period:', rightMargin - 120, currentY, { 
            align: 'right',
@@ -929,7 +947,7 @@ class UnifiedPDFService {
       
       doc.moveDown(0.2);
       
-      doc.fontSize(6).font('Helvetica')
+      doc.fontSize(7).font('Helvetica')
          .fillColor('#666666')
          .text(`${startDate} to ${endDate}`, rightMargin - 120, doc.y, { 
            align: 'right',
@@ -2308,6 +2326,25 @@ class UnifiedPDFService {
   }
 
   /**
+   * Generate class name with Roman numerals
+   * Converts semester to Year (Roman) and Part (I/II) format
+   * Examples: 
+   * - Semester 7 → Year IV Part I
+   * - Semester 4 → Year II Part II
+   */
+  _generateClassName(programCode, semester, section) {
+    // Convert semester to year and part
+    const year = Math.ceil(semester / 2);
+    const part = (semester % 2 === 1) ? 'I' : 'II';
+    
+    // Convert year number to Roman numeral
+    const romanNumerals = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+    const yearRoman = romanNumerals[year] || year.toString();
+    
+    return `   ${programCode.toUpperCase()} ${section.toUpperCase()}\nYear ${yearRoman} Part ${part} `;
+  }
+
+  /**
    * Get lab group label matching frontend logic
    */
   _getLabGroupLabel(group) {
@@ -2335,7 +2372,7 @@ class UnifiedPDFService {
   /**
    * Draw a cell in the PDF table with background, border and text
    */
-  _drawCell(doc, x, y, width, height, text, bgColor = '#ffffff', isHeader = false, isLab = false) {
+  _drawCell(doc, x, y, width, height, text, bgColor = '#ffffff', isHeader = false, isLab = false, isSingleTimeSlot = false) {
     // Remove background colors for merged classes
     if (text && text.includes('──────')) {
       bgColor = '#ffffff'; // Use white background for merged classes
@@ -2358,21 +2395,21 @@ class UnifiedPDFService {
                               (text && text.includes(' & ')) || // General pattern for joined groups
                               (text && /\(Group [A-D] & Group [A-D]\)/.test(text));
       
-      // Force small font sizes for all content
-      const fontSizeMultiplier = 0.75; // Force 50% reduction
+      // Adjust font size multiplier for single time slot routines
+      const fontSizeMultiplier = isSingleTimeSlot ? 0.6 : 0.75; // Smaller fonts for single time slot
       
-      // Dynamic font sizing based on content length - force small fonts
+      // Dynamic font sizing based on content length - with single time slot adjustment
       let fontSize;
       if (isHeader) {
-        fontSize = Math.round(10 * fontSizeMultiplier); // Force small headers
+        fontSize = Math.round((isSingleTimeSlot ? 8 : 10) * fontSizeMultiplier); // Much smaller headers for single slot
       } else if (isMultiGroupClass) {
-        fontSize = Math.round(8 * fontSizeMultiplier); // Force small multi-group text
+        fontSize = Math.round((isSingleTimeSlot ? 6 : 8) * fontSizeMultiplier); // Much smaller multi-group text for single slot
       } else if (isMergedClass || lines.length > 8) {
-        fontSize = Math.round(7 * fontSizeMultiplier); // Force small merged class text
+        fontSize = Math.round((isSingleTimeSlot ? 5 : 7) * fontSizeMultiplier); // Much smaller merged class text for single slot
       } else if (lines.length > 5) {
-        fontSize = Math.round(7 * fontSizeMultiplier); // Much smaller moderately long content for A4
+        fontSize = Math.round((isSingleTimeSlot ? 5 : 7) * fontSizeMultiplier); // Much smaller moderately long content for single slot
       } else {
-        fontSize = Math.round(8 * fontSizeMultiplier); // Much smaller standard content for A4
+        fontSize = Math.round((isSingleTimeSlot ? 6 : 8) * fontSizeMultiplier); // Much smaller standard content for single slot
       }
       
       const font = isHeader ? 'Helvetica-Bold' : (isLab ? 'Helvetica-Bold' : 'Helvetica');
@@ -2480,8 +2517,6 @@ class UnifiedPDFService {
       doc.fillColor('#000000');
     }
   }
-
-  // ...existing code...
 }
 
 module.exports = UnifiedPDFService;
