@@ -964,8 +964,26 @@ class UnifiedPDFService {
   /**
    * Generate PDF footer (removed to save space)
    */
-  _generatePDFFooter(doc, scheduleType) {
-    // Footer removed to give more space to the routine grid
+  _generatePDFFooter(doc, scheduleType, options = {}) {
+    const { routineSlots } = options;
+    
+    // For class schedules, add the most common room in bottom left
+    if (routineSlots && scheduleType && scheduleType.includes('Semester')) {
+      const mostCommonRoom = this._getMostCommonRoom(routineSlots);
+      
+      if (mostCommonRoom) {
+        // Position at bottom left
+        const leftMargin = 50;
+        const bottomMargin = 100;
+        const footerY = doc.page.height - bottomMargin;
+        
+        doc.fontSize(12).font('Helvetica-Bold')
+           .fillColor('#333333')
+           .text(mostCommonRoom, leftMargin, footerY, {
+             align: 'left'
+           });
+      }
+    }
   }
 
   /**
@@ -1304,7 +1322,9 @@ class UnifiedPDFService {
       this.fillRoutineData(doc, routineSlots, deduplicatedTimeSlots, 'class', null, null, semester);
 
       this._generateTeacherMappingTable(doc, routineSlots);
-      this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
+      this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`, {
+        routineSlots
+      });
 
       return new Promise((resolve) => {
         doc.on('end', () => {
@@ -1610,7 +1630,9 @@ class UnifiedPDFService {
       });
 
         this.fillRoutineData(doc, routineSlots, timeSlots, 'class', null, null, semester);
-        this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`);
+        this._generatePDFFooter(doc, `${programCode.toUpperCase()} Semester ${semester} Section ${section.toUpperCase()}`, {
+          routineSlots
+        });
       }
 
       return new Promise((resolve) => {
@@ -2341,7 +2363,7 @@ class UnifiedPDFService {
     const romanNumerals = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
     const yearRoman = romanNumerals[year] || year.toString();
     
-    return `   ${programCode.toUpperCase()} ${section.toUpperCase()}\nYear ${yearRoman} Part ${part} `;
+    return ` ${programCode.toUpperCase()} ${section.toUpperCase()}\nYear ${yearRoman} Part ${part} `;
   }
 
   /**
@@ -2396,7 +2418,7 @@ class UnifiedPDFService {
                               (text && /\(Group [A-D] & Group [A-D]\)/.test(text));
       
       // Adjust font size multiplier for single time slot routines
-      const fontSizeMultiplier = isSingleTimeSlot ? 0.6 : 0.75; // Smaller fonts for single time slot
+      const fontSizeMultiplier = isSingleTimeSlot ? 0.65 : 0.80; // Smaller fonts for single time slot
       
       // Dynamic font sizing based on content length - with single time slot adjustment
       let fontSize;
@@ -2515,6 +2537,47 @@ class UnifiedPDFService {
       
       // Reset fill color
       doc.fillColor('#000000');
+    }
+  }
+
+  /**
+   * Find the most commonly used room for a class and format it properly
+   */
+  _getMostCommonRoom(routineSlots) {
+    if (!routineSlots || routineSlots.length === 0) {
+      return null;
+    }
+
+    // Count room occurrences
+    const roomCounts = {};
+    
+    routineSlots.forEach(slot => {
+      if (slot.roomId && slot.roomId.name) {
+        const roomName = slot.roomId.name;
+        roomCounts[roomName] = (roomCounts[roomName] || 0) + 1;
+      }
+    });
+
+    // Find the most common room
+    let mostCommonRoom = null;
+    let maxCount = 0;
+    
+    Object.entries(roomCounts).forEach(([roomName, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommonRoom = roomName;
+      }
+    });
+
+    if (!mostCommonRoom) {
+      return null;
+    }
+
+    // Format the room name
+    if (mostCommonRoom.startsWith('L')) {
+      return `Library Room ${mostCommonRoom.substring(1)}`;
+    } else {
+      return `Lecture Room ${mostCommonRoom}`;
     }
   }
 }
