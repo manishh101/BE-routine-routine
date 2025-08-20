@@ -51,16 +51,52 @@ connectDB().catch(err => {
 });
 
 // Enhanced CORS configuration
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:7103',
+  process.env.CORS_ORIGIN || process.env.FRONTEND_URL || 'http://localhost:7103',
+  'http://localhost:3000',
+  'http://localhost:7103',
+  'http://localhost:7105',
+  'https://localhost:3000', // HTTPS variants
+  'https://localhost:7103',
+  'https://localhost:7105'
+];
+
+// Add Vercel domain patterns if in production
+if (process.env.NODE_ENV === 'production') {
+  // Add common Vercel domain patterns
+  allowedOrigins.push(/^https:\/\/.*\.vercel\.app$/);
+  // Add custom domain if specified
+  if (process.env.CUSTOM_DOMAIN) {
+    allowedOrigins.push(process.env.CUSTOM_DOMAIN);
+  }
+}
+
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:7103',
-    'http://localhost:3000',
-    'http://localhost:7103',
-  ],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (typeof allowedOrigin === 'string') {
+        return allowedOrigin === origin;
+      } else if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
 
 // Rate limiting middleware

@@ -1,0 +1,8 @@
+# Frontend Environment Variables for Vercel Dashboard
+# Make sure you're deploying from manishh101/BE-routine repository
+# Replace the backend URL with your actual Render URL
+VITE_API_BASE_URL=https://be-routine-backend-xxx.onrender.com
+VITE_APP_NAME=BE Routine Management System - manishh101
+VITE_NODE_ENV=production
+
+# Note: Ensure you're logged into Vercel with the manishh101 GitHub account

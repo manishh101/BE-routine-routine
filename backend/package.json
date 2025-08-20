@@ -12,7 +12,9 @@
     "test:watch": "cross-env NODE_ENV=test jest --watch",
     "test:api": "node tests/runAllTests.js all",
     "test:basic": "node tests/runAllTests.js basic",
-    "test:setup": "node tests/runAllTests.js setup"
+    "test:setup": "node tests/runAllTests.js setup",
+    "build": "echo 'No build step needed'",
+    "postinstall": "echo 'Installation complete'"
   },
   "keywords": [],
   "author": "",

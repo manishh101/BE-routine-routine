@@ -1,0 +1,9 @@
+# Backend Environment Variables for Render Dashboard
+NODE_ENV=production
+PORT=10000
+MONGODB_URI=mongodb+srv://079bct044manish:routine@routine.mrjj7ho.mongodb.net/bctroutine?retryWrites=true&w=majority&appName=routine
+JWT_SECRET=ASDSHI@!@!BDSHUIfwefwefwe@*!@&^^
+JWT_EXPIRE=30d
+USE_RABBITMQ=false
+FRONTEND_URL=https://your-frontend-url.vercel.app
+CORS_ORIGIN=https://your-frontend-url.vercel.app

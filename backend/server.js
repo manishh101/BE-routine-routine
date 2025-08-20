@@ -1,7 +1,8 @@
 const app = require('./app');
 const { connectQueue, closeConnection } = require('./services/queue.service');
 
-const PORT = process.env.PORT || 7102;
+// Use Render's PORT environment variable or fallback
+const PORT = process.env.PORT || 10000;
 
 // Global error handlers for unhandled promises and exceptions
 process.on('uncaughtException', (err) => {

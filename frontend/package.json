@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:production": "NODE_ENV=production vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deb": "npm run dev"
+    "deb": "npm run dev",
+    "start": "vite preview --port 3000"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.10",

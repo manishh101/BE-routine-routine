@@ -3,13 +3,28 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
+  build: {
+    outDir: 'dist',
+    sourcemap: mode !== 'production',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          antd: ['antd'],
+          router: ['react-router-dom']
+        }
+      }
+    },
+    minify: mode === 'production' ? 'esbuild' : false,
+    target: 'es2015'
+  },
   server: {
     port: 7105,
     proxy: {
       '/api': {
-        target: 'http://localhost:7102',
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:10000',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, '/api'),
@@ -28,4 +43,4 @@ export default defineConfig({
     },
     cors: true,
   },
-})
+}))
